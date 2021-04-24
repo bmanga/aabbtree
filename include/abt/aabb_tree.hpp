@@ -31,6 +31,7 @@
 #include <array>
 #include <cassert>
 #include <stdexcept>
+#include <vector>
 
 #include <limits>
 
@@ -152,8 +153,6 @@ class aabb {
    */
   bool contains(const aabb &aabb) const
   {
-    assert(aabb.lowerBound.size() == lowerBound.size());
-
     for (unsigned int i = 0; i < lowerBound.size(); i++) {
       if (aabb.lowerBound[i] < lowerBound[i])
         return false;
@@ -229,51 +228,6 @@ class aabb {
   rt surfaceArea;
 };
 
-/*! \brief A node of the AABB tree.
-
-    Each node of the tree contains an AABB object which corresponds to a
-    particle, or a group of particles, in the simulation box. The AABB
-    objects of individual particles are "fattened" before they are stored
-    to avoid having to continually update and rebalance the tree when
-    displacements are small.
-
-    Nodes are aware of their position within in the tree. The isLeaf member
-    function allows the tree to query whether the node is a leaf, i.e. to
-    determine whether it holds a single particle.
- */
-template <typename AABBTy>
-struct Node {
-  /// Constructor.
-  Node() = default;
-
-  /// The fattened axis-aligned bounding box.
-  AABBTy aabb;
-
-  /// Index of the parent node.
-  unsigned int parent;
-
-  /// Index of the next node.
-  unsigned int next;
-
-  /// Index of the left-hand child.
-  unsigned int left;
-
-  /// Index of the right-hand child.
-  unsigned int right;
-
-  /// Height of the node. This is 0 for a leaf and -1 for a free node.
-  int height;
-
-  /// The index of the particle that the node contains (leaf nodes only).
-  unsigned int particle;
-
-  //! Test whether the node is a leaf.
-  /*! \return
-          Whether the node is a leaf node.
-   */
-  bool isLeaf() const { return (left == NULL_NODE); }
-};
-
 /*! \brief The dynamic AABB tree.
 
     The dynamic AABB tree is a hierarchical data structure that can be used
@@ -283,12 +237,59 @@ struct Node {
     periodicity, e.g. periodic along specific axes.
  */
 template <unsigned Dim, typename Float = double>
-class Tree {
+class tree {
  public:
-  using AABB = aabb<Dim, Float>;
+  using aabb = abt::aabb<Dim, Float>;
   using point = abt::point<Dim, Float>;
   template <typename Ty>
   using vec = std::array<Ty, Dim>;
+
+ private:
+  /*! \brief A node of the AABB tree.
+
+   Each node of the tree contains an AABB object which corresponds to a
+   particle, or a group of particles, in the simulation box. The AABB
+   objects of individual particles are "fattened" before they are stored
+   to avoid having to continually update and rebalance the tree when
+   displacements are small.
+
+   Nodes are aware of their position within in the tree. The isLeaf member
+   function allows the tree to query whether the node is a leaf, i.e. to
+   determine whether it holds a single particle.
+  */
+  struct node {
+    /// Constructor.
+    node() = default;
+
+    /// The fattened axis-aligned bounding box.
+    aabb bb;
+
+    /// Index of the parent node.
+    unsigned int parent;
+
+    /// Index of the next node.
+    unsigned int next;
+
+    /// Index of the left-hand child.
+    unsigned int left;
+
+    /// Index of the right-hand child.
+    unsigned int right;
+
+    /// Height of the node. This is 0 for a leaf and -1 for a free node.
+    int height;
+
+    /// The index of the particle that the node contains (leaf nodes only).
+    unsigned int particle;
+
+    //! Test whether the node is a leaf.
+    /*! \return
+            Whether the node is a leaf node.
+     */
+    bool isLeaf() const { return (left == NULL_NODE); }
+  };
+
+ public:
 
   //! Constructor (non-periodic).
   /*! \param skinThickness_
@@ -301,7 +302,7 @@ class Tree {
       \param touchIsOverlap
           Does touching count as overlapping in query operations?
    */
-  Tree(double skinThickness = 0.05,
+  tree(double skinThickness = 0.05,
        unsigned int nParticles = 16,
        bool touchIsOverlap = true)
       : m_is_periodic(false),
@@ -346,7 +347,7 @@ class Tree {
       \param touchIsOverlap
           Does touching count as overlapping in query operations?
    */
-  Tree(double skinThickness,
+  tree(double skinThickness,
        const vec<bool> &periodicity,
        const vec<double> &boxSize,
        unsigned int nParticles = 16,
@@ -427,18 +428,19 @@ class Tree {
 
     // Compute the AABB limits.
     for (unsigned int i = 0; i < Dim; i++) {
-      m_nodes[node].aabb.lowerBound[i] = position[i] - radius;
-      m_nodes[node].aabb.upperBound[i] = position[i] + radius;
-      size[i] = m_nodes[node].aabb.upperBound[i] - m_nodes[node].aabb.lowerBound[i];
+      m_nodes[node].bb.lowerBound[i] = position[i] - radius;
+      m_nodes[node].bb.upperBound[i] = position[i] + radius;
+      size[i] =
+          m_nodes[node].bb.upperBound[i] - m_nodes[node].bb.lowerBound[i];
     }
 
     // Fatten the AABB.
     for (unsigned int i = 0; i < Dim; i++) {
-      m_nodes[node].aabb.lowerBound[i] -= m_skin_thickness * size[i];
-      m_nodes[node].aabb.upperBound[i] += m_skin_thickness * size[i];
+      m_nodes[node].bb.lowerBound[i] -= m_skin_thickness * size[i];
+      m_nodes[node].bb.upperBound[i] += m_skin_thickness * size[i];
     }
-    m_nodes[node].aabb.surfaceArea = m_nodes[node].aabb.computeSurfaceArea();
-    m_nodes[node].aabb.centre = m_nodes[node].aabb.computeCentre();
+    m_nodes[node].bb.surfaceArea = m_nodes[node].bb.computeSurfaceArea();
+    m_nodes[node].bb.centre = m_nodes[node].bb.computeCentre();
 
     // Zero the height.
     m_nodes[node].height = 0;
@@ -488,18 +490,18 @@ class Tree {
             "[ERROR]: AABB lower bound is greater than the upper bound!");
       }
 
-      m_nodes[node].aabb.lowerBound[i] = lowerBound[i];
-      m_nodes[node].aabb.upperBound[i] = upperBound[i];
+      m_nodes[node].bb.lowerBound[i] = lowerBound[i];
+      m_nodes[node].bb.upperBound[i] = upperBound[i];
       size[i] = upperBound[i] - lowerBound[i];
     }
 
     // Fatten the AABB.
     for (unsigned int i = 0; i < Dim; i++) {
-      m_nodes[node].aabb.lowerBound[i] -= m_skin_thickness * size[i];
-      m_nodes[node].aabb.upperBound[i] += m_skin_thickness * size[i];
+      m_nodes[node].bb.lowerBound[i] -= m_skin_thickness * size[i];
+      m_nodes[node].bb.upperBound[i] += m_skin_thickness * size[i];
     }
-    m_nodes[node].aabb.surfaceArea = m_nodes[node].aabb.computeSurfaceArea();
-    m_nodes[node].aabb.centre = m_nodes[node].aabb.computeCentre();
+    m_nodes[node].bb.surfaceArea = m_nodes[node].bb.computeSurfaceArea();
+    m_nodes[node].bb.centre = m_nodes[node].bb.computeCentre();
 
     // Zero the height.
     m_nodes[node].height = 0;
@@ -661,10 +663,10 @@ class Tree {
     }
 
     // Create the new AABB.
-    AABB aabb(lowerBound, upperBound);
+    aabb aabb(lowerBound, upperBound);
 
     // No need to update if the particle is still within its fattened AABB.
-    if (!alwaysReinsert && m_nodes[node].aabb.contains(aabb))
+    if (!alwaysReinsert && m_nodes[node].bb.contains(aabb))
       return false;
 
     // Remove the current leaf.
@@ -677,11 +679,11 @@ class Tree {
     }
 
     // Assign the new AABB.
-    m_nodes[node].aabb = aabb;
+    m_nodes[node].bb = aabb;
 
     // Update the surface area and centroid.
-    m_nodes[node].aabb.surfaceArea = m_nodes[node].aabb.computeSurfaceArea();
-    m_nodes[node].aabb.centre = m_nodes[node].aabb.computeCentre();
+    m_nodes[node].bb.surfaceArea = m_nodes[node].bb.computeSurfaceArea();
+    m_nodes[node].bb.centre = m_nodes[node].bb.computeCentre();
 
     // Insert a new leaf node.
     insertLeaf(node);
@@ -704,7 +706,7 @@ class Tree {
     }
 
     // Test overlap of particle AABB against all other particles.
-    return query(particle, m_nodes[m_particle_map.find(particle)->second].aabb);
+    return query(particle, m_nodes[m_particle_map.find(particle)->second].bb);
   }
 
   //! Query the tree to find candidate interactions for an AABB.
@@ -717,7 +719,7 @@ class Tree {
       \return particles
           A vector of particle indices.
    */
-  std::vector<unsigned int> query(unsigned int particle, const AABB &aabb)
+  std::vector<unsigned int> query(unsigned int particle, const aabb &aabb)
   {
     std::vector<unsigned int> stack;
     stack.reserve(256);
@@ -730,7 +732,7 @@ class Tree {
       stack.pop_back();
 
       // Copy the AABB.
-      AABB nodeAABB = m_nodes[node].aabb;
+      auto nodeAABB = m_nodes[node].bb;
 
       if (node == NULL_NODE)
         continue;
@@ -778,7 +780,7 @@ class Tree {
       \return particles
           A vector of particle indices.
    */
-  std::vector<unsigned int> query(const AABB &aabb)
+  std::vector<unsigned int> query(const aabb &aabb)
   {
     // Make sure the tree isn't empty.
     if (m_particle_map.size() == 0) {
@@ -793,9 +795,9 @@ class Tree {
   /*! \param particle
           The particle index.
    */
-  const AABB &getAABB(unsigned int particle)
+  const aabb &getAABB(unsigned int particle)
   {
-    return m_nodes[m_particle_map[particle]].aabb;
+    return m_nodes[m_particle_map[particle]].bb;
   }
 
   //! Get the height of the tree.
@@ -813,7 +815,7 @@ class Tree {
   /*! \return
           The number of nodes in the tree.
    */
-  unsigned int getNodeCount() const { m_node_count; }
+  unsigned int getNodeCount() const { return m_node_count; }
 
   //! Compute the maximum balancance of the tree.
   /*! \return
@@ -829,8 +831,8 @@ class Tree {
 
       assert(m_nodes[i].isLeaf() == false);
 
-      unsigned int balance =
-          std::abs(m_nodes[m_nodes[i].left].height - m_nodes[m_nodes[i].right].height);
+      unsigned int balance = std::abs(m_nodes[m_nodes[i].left].height -
+                                      m_nodes[m_nodes[i].right].height);
       maxBalance = std::max(maxBalance, balance);
     }
 
@@ -847,14 +849,14 @@ class Tree {
     if (m_root == NULL_NODE)
       return 0.0;
 
-    double rootArea = m_nodes[m_root].aabb.computeSurfaceArea();
+    double rootArea = m_nodes[m_root].bb.computeSurfaceArea();
     double totalArea = 0.0;
 
     for (unsigned int i = 0; i < m_node_capacity; i++) {
       if (m_nodes[i].height < 0)
         continue;
 
-      totalArea += m_nodes[i].aabb.computeSurfaceArea();
+      totalArea += m_nodes[i].bb.computeSurfaceArea();
     }
 
     return totalArea / rootArea;
@@ -906,11 +908,11 @@ class Tree {
       int iMin = -1, jMin = -1;
 
       for (unsigned int i = 0; i < count; i++) {
-        AABB aabbi = m_nodes[nodeIndices[i]].aabb;
+        aabb aabbi = m_nodes[nodeIndices[i]].bb;
 
         for (unsigned int j = i + 1; j < count; j++) {
-          AABB aabbj = m_nodes[nodeIndices[j]].aabb;
-          AABB aabb;
+          aabb aabbj = m_nodes[nodeIndices[j]].bb;
+          aabb aabb;
           aabb.merge(aabbi, aabbj);
           double cost = aabb.getSurfaceArea();
 
@@ -930,7 +932,7 @@ class Tree {
       m_nodes[parent].right = index2;
       m_nodes[parent].height =
           1 + std::max(m_nodes[index1].height, m_nodes[index2].height);
-      m_nodes[parent].aabb.merge(m_nodes[index1].aabb, m_nodes[index2].aabb);
+      m_nodes[parent].bb.merge(m_nodes[index1].bb, m_nodes[index2].bb);
       m_nodes[parent].parent = NULL_NODE;
 
       m_nodes[index1].parent = parent;
@@ -951,7 +953,7 @@ class Tree {
   unsigned int m_root;
 
   /// The dynamic tree.
-  std::vector<Node<AABB>> m_nodes;
+  std::vector<node> m_nodes;
 
   /// The current number of nodes in the tree.
   unsigned int m_node_count;
@@ -1054,7 +1056,7 @@ class Tree {
 
     // Find the best sibling for the node.
 
-    AABB leafAABB = m_nodes[leaf].aabb;
+    aabb leafAABB = m_nodes[leaf].bb;
     unsigned int index = m_root;
 
     while (!m_nodes[index].isLeaf()) {
@@ -1062,10 +1064,10 @@ class Tree {
       unsigned int left = m_nodes[index].left;
       unsigned int right = m_nodes[index].right;
 
-      double surfaceArea = m_nodes[index].aabb.getSurfaceArea();
+      double surfaceArea = m_nodes[index].bb.getSurfaceArea();
 
-      AABB combinedAABB;
-      combinedAABB.merge(m_nodes[index].aabb, leafAABB);
+      aabb combinedAABB;
+      combinedAABB.merge(m_nodes[index].bb, leafAABB);
       double combinedSurfaceArea = combinedAABB.getSurfaceArea();
 
       // Cost of creating a new parent for this node and the new leaf.
@@ -1077,14 +1079,14 @@ class Tree {
       // Cost of descending to the left.
       double costLeft;
       if (m_nodes[left].isLeaf()) {
-        AABB aabb;
-        aabb.merge(leafAABB, m_nodes[left].aabb);
+        aabb aabb;
+        aabb.merge(leafAABB, m_nodes[left].bb);
         costLeft = aabb.getSurfaceArea() + inheritanceCost;
       }
       else {
-        AABB aabb;
-        aabb.merge(leafAABB, m_nodes[left].aabb);
-        double oldArea = m_nodes[left].aabb.getSurfaceArea();
+        aabb aabb;
+        aabb.merge(leafAABB, m_nodes[left].bb);
+        double oldArea = m_nodes[left].bb.getSurfaceArea();
         double newArea = aabb.getSurfaceArea();
         costLeft = (newArea - oldArea) + inheritanceCost;
       }
@@ -1092,14 +1094,14 @@ class Tree {
       // Cost of descending to the right.
       double costRight;
       if (m_nodes[right].isLeaf()) {
-        AABB aabb;
-        aabb.merge(leafAABB, m_nodes[right].aabb);
+        aabb aabb;
+        aabb.merge(leafAABB, m_nodes[right].bb);
         costRight = aabb.getSurfaceArea() + inheritanceCost;
       }
       else {
-        AABB aabb;
-        aabb.merge(leafAABB, m_nodes[right].aabb);
-        double oldArea = m_nodes[right].aabb.getSurfaceArea();
+        aabb aabb;
+        aabb.merge(leafAABB, m_nodes[right].bb);
+        double oldArea = m_nodes[right].bb.getSurfaceArea();
         double newArea = aabb.getSurfaceArea();
         costRight = (newArea - oldArea) + inheritanceCost;
       }
@@ -1121,7 +1123,7 @@ class Tree {
     unsigned int oldParent = m_nodes[sibling].parent;
     unsigned int newParent = allocateNode();
     m_nodes[newParent].parent = oldParent;
-    m_nodes[newParent].aabb.merge(leafAABB, m_nodes[sibling].aabb);
+    m_nodes[newParent].bb.merge(leafAABB, m_nodes[sibling].bb);
     m_nodes[newParent].height = m_nodes[sibling].height + 1;
 
     // The sibling was not the root.
@@ -1158,7 +1160,7 @@ class Tree {
 
       m_nodes[index].height =
           1 + std::max(m_nodes[left].height, m_nodes[right].height);
-      m_nodes[index].aabb.merge(m_nodes[left].aabb, m_nodes[right].aabb);
+      m_nodes[index].bb.merge(m_nodes[left].bb, m_nodes[right].bb);
 
       index = m_nodes[index].parent;
     }
@@ -1202,7 +1204,7 @@ class Tree {
         unsigned int left = m_nodes[index].left;
         unsigned int right = m_nodes[index].right;
 
-        m_nodes[index].aabb.merge(m_nodes[left].aabb, m_nodes[right].aabb);
+        m_nodes[index].bb.merge(m_nodes[left].bb, m_nodes[right].bb);
         m_nodes[index].height =
             1 + std::max(m_nodes[left].height, m_nodes[right].height);
 
@@ -1265,8 +1267,8 @@ class Tree {
         m_nodes[right].right = rightLeft;
         m_nodes[node].right = rightRight;
         m_nodes[rightRight].parent = node;
-        m_nodes[node].aabb.merge(m_nodes[left].aabb, m_nodes[rightRight].aabb);
-        m_nodes[right].aabb.merge(m_nodes[node].aabb, m_nodes[rightLeft].aabb);
+        m_nodes[node].bb.merge(m_nodes[left].bb, m_nodes[rightRight].bb);
+        m_nodes[right].bb.merge(m_nodes[node].bb, m_nodes[rightLeft].bb);
 
         m_nodes[node].height =
             1 + std::max(m_nodes[left].height, m_nodes[rightRight].height);
@@ -1277,8 +1279,8 @@ class Tree {
         m_nodes[right].right = rightRight;
         m_nodes[node].right = rightLeft;
         m_nodes[rightLeft].parent = node;
-        m_nodes[node].aabb.merge(m_nodes[left].aabb, m_nodes[rightLeft].aabb);
-        m_nodes[right].aabb.merge(m_nodes[node].aabb, m_nodes[rightRight].aabb);
+        m_nodes[node].bb.merge(m_nodes[left].bb, m_nodes[rightLeft].bb);
+        m_nodes[right].bb.merge(m_nodes[node].bb, m_nodes[rightRight].bb);
 
         m_nodes[node].height =
             1 + std::max(m_nodes[left].height, m_nodes[rightLeft].height);
@@ -1319,8 +1321,8 @@ class Tree {
         m_nodes[left].right = leftLeft;
         m_nodes[node].left = leftRight;
         m_nodes[leftRight].parent = node;
-        m_nodes[node].aabb.merge(m_nodes[right].aabb, m_nodes[leftRight].aabb);
-        m_nodes[left].aabb.merge(m_nodes[node].aabb, m_nodes[leftLeft].aabb);
+        m_nodes[node].bb.merge(m_nodes[right].bb, m_nodes[leftRight].bb);
+        m_nodes[left].bb.merge(m_nodes[node].bb, m_nodes[leftLeft].bb);
 
         m_nodes[node].height =
             1 + std::max(m_nodes[right].height, m_nodes[leftRight].height);
@@ -1331,8 +1333,8 @@ class Tree {
         m_nodes[left].right = leftRight;
         m_nodes[node].left = leftLeft;
         m_nodes[leftLeft].parent = node;
-        m_nodes[node].aabb.merge(m_nodes[right].aabb, m_nodes[leftLeft].aabb);
-        m_nodes[left].aabb.merge(m_nodes[node].aabb, m_nodes[leftRight].aabb);
+        m_nodes[node].bb.merge(m_nodes[right].bb, m_nodes[leftLeft].bb);
+        m_nodes[left].bb.merge(m_nodes[node].bb, m_nodes[leftRight].bb);
 
         m_nodes[node].height =
             1 + std::max(m_nodes[right].height, m_nodes[leftLeft].height);
@@ -1432,12 +1434,12 @@ class Tree {
     (void)height;  // Unused variable in Release build
     assert(m_nodes[node].height == height);
 
-    AABB aabb;
-    aabb.merge(m_nodes[left].aabb, m_nodes[right].aabb);
+    aabb aabb;
+    aabb.merge(m_nodes[left].bb, m_nodes[right].bb);
 
     for (unsigned int i = 0; i < Dim; i++) {
-      assert(aabb.lowerBound[i] == m_nodes[node].aabb.lowerBound[i]);
-      assert(aabb.upperBound[i] == m_nodes[node].aabb.upperBound[i]);
+      assert(aabb.lowerBound[i] == m_nodes[node].bb.lowerBound[i]);
+      assert(aabb.upperBound[i] == m_nodes[node].bb.upperBound[i]);
     }
 
     validateMetrics(left);

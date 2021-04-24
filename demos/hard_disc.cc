@@ -31,7 +31,7 @@
 #endif
 
   template <class T>
-  using vec = abt::Tree<2>::vec<T>;
+  using vec = abt::tree<2>::vec<T>;
 
 /*! \file hard_disc.cpp
 
@@ -119,8 +119,8 @@ int main(int argc, char **argv)
   MersenneTwister rng;
 
   // Initialise the AABB trees.
-  abt::Tree<2> treeSmall(maxDisp, periodicity, boxSize, nSmall);
-  abt::Tree<2> treeLarge(maxDisp, periodicity, boxSize, nLarge);
+  abt::tree<2> treeSmall(maxDisp, periodicity, boxSize, nSmall);
+  abt::tree<2> treeLarge(maxDisp, periodicity, boxSize, nLarge);
 
   // Initialise particle position vectors.
   std::vector<abt::point<2>> positionsSmall(
