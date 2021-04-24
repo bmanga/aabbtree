@@ -5,3 +5,10 @@ target_include_directories(abt INTERFACE include/)
 
 add_executable(demo demos/hard_disc.cc)
 target_link_libraries(demo abt)
+
+option(BUILD_TESTS "Build the unit tests" OFF)
+
+if (BUILD_TESTS)
+    message(STATUS "Building tests...")
+    add_subdirectory(test/)
+endif()
