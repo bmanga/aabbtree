@@ -24,11 +24,14 @@
 #include <iostream>
 
 #include "MersenneTwister.h"
-#include "aabb/AABB.h"
+#include "abt/aabb_tree.hpp"
 
 #ifndef M_PI
 #define M_PI 3.1415926535897932384626433832795
 #endif
+
+  template <class T>
+  using vec = abt::Tree<2>::vec<T>;
 
 /*! \file hard_disc.cpp
 
@@ -40,26 +43,26 @@
 // FUNCTION PROTOTYPES
 
 // Test whether two particles overlap.
-bool overlaps(std::vector<double> &,
-              std::vector<double> &,
-              const std::vector<bool> &,
-              const std::vector<double> &,
+bool overlaps(abt::point<2> &,
+              abt::point<2> &,
+              const vec<bool> &,
+              const vec<double> &,
               double);
 
 // Compute the minimum image separation vector.
-void minimumImage(std::vector<double> &,
-                  const std::vector<bool> &,
-                  const std::vector<double> &);
+void minimumImage(vec<double> &,
+                  const vec<bool> &,
+                  const vec<double> &);
 
 // Apply periodic boundary conditions.
-void periodicBoundaries(std::vector<double> &,
-                        const std::vector<bool> &,
-                        const std::vector<double> &);
+void periodicBoundaries(abt::point<2> &,
+                        const vec<bool> &,
+                        const vec<double> &);
 
 // Append a particle configuration to a VMD xyz file.
 void printVMD(const std::string &,
-              const std::vector<std::vector<double> > &,
-              const std::vector<std::vector<double> > &);
+              const std::vector<abt::point<2>> &,
+              const std::vector<abt::point<2>> &);
 
 // MAIN FUNCTION
 
@@ -102,27 +105,28 @@ int main(int argc, char **argv)
   unsigned int format = std::floor(std::log10(nSamples));
 
   // Set the periodicity of the simulation box.
-  std::vector<bool> periodicity({true, true});
+
+  vec<bool> periodicity({true, true});
 
   // Work out base length of simulation box.
   double baseLength =
       std::pow((M_PI * (nSmall * diameterSmall + nLarge * diameterLarge)) /
                    (4.0 * density),
                1.0 / 2.0);
-  std::vector<double> boxSize({baseLength, baseLength});
+  vec<double> boxSize({baseLength, baseLength});
 
   // Initialise the random number generator.
   MersenneTwister rng;
 
   // Initialise the AABB trees.
-  aabb::Tree treeSmall(2, maxDisp, periodicity, boxSize, nSmall);
-  aabb::Tree treeLarge(2, maxDisp, periodicity, boxSize, nLarge);
+  abt::Tree<2> treeSmall(maxDisp, periodicity, boxSize, nSmall);
+  abt::Tree<2> treeLarge(maxDisp, periodicity, boxSize, nLarge);
 
   // Initialise particle position vectors.
-  std::vector<std::vector<double> > positionsSmall(
-      nSmall, std::vector<double>(boxSize.size()));
-  std::vector<std::vector<double> > positionsLarge(
-      nLarge, std::vector<double>(boxSize.size()));
+  std::vector<abt::point<2>> positionsSmall(
+      nSmall, abt::point<2>(boxSize.size()));
+  std::vector<abt::point<2>> positionsLarge(
+      nLarge, abt::point<2>(boxSize.size()));
 
   /*****************************************************************/
   /*             Generate the initial AABB trees.                  */
@@ -133,7 +137,7 @@ int main(int argc, char **argv)
   std::cout << "\nInserting large particles into AABB tree ...\n";
   for (unsigned int i = 0; i < nLarge; i++) {
     // Initialise the particle position vector.
-    std::vector<double> position(2);
+    abt::point<2> position;
 
     // Insert the first particle directly.
     if (i == 0) {
@@ -154,13 +158,13 @@ int main(int argc, char **argv)
         position[1] = boxSize[1] * rng();
 
         // Compute lower and upper AABB bounds.
-        std::vector<double> lowerBound(
-            {position[0] - radiusLarge, position[1] - radiusLarge});
-        std::vector<double> upperBound(
-            {position[0] + radiusLarge, position[1] + radiusLarge});
+        abt::point<2> lowerBound
+            {position[0] - radiusLarge, position[1] - radiusLarge};
+        abt::point<2> upperBound
+            {position[0] + radiusLarge, position[1] + radiusLarge};
 
         // Generate the AABB.
-        aabb::AABB aabb(lowerBound, upperBound);
+        abt::aabb<2> aabb(lowerBound, upperBound);
 
         // Query AABB overlaps.
         std::vector<unsigned int> particles = treeLarge.query(aabb);
@@ -197,7 +201,7 @@ int main(int argc, char **argv)
   std::cout << "\nInserting small particles into AABB tree ...\n";
   for (unsigned int i = 0; i < nSmall; i++) {
     // Initialise the particle position vector.
-    std::vector<double> position(2);
+    abt::point<2> position;
 
     // Initialise overlap flag.
     bool isOverlap = true;
@@ -209,13 +213,13 @@ int main(int argc, char **argv)
       position[1] = boxSize[1] * rng();
 
       // Compute lower and upper AABB bounds.
-      std::vector<double> lowerBound(
+      abt::point<2> lowerBound(
           {position[0] - radiusSmall, position[1] - radiusSmall});
-      std::vector<double> upperBound(
+      abt::point<2> upperBound(
           {position[0] + radiusSmall, position[1] + radiusSmall});
 
       // Generate the AABB.
-      aabb::AABB aabb(lowerBound, upperBound);
+      abt::aabb<2> aabb(lowerBound, upperBound);
 
       // First query AABB overlaps with the large particles.
       std::vector<unsigned int> particles = treeLarge.query(aabb);
@@ -298,10 +302,10 @@ int main(int argc, char **argv)
         particle -= nSmall;
 
       // Initialise vectors.
-      std::vector<double> displacement(2);
-      std::vector<double> position(2);
-      std::vector<double> lowerBound(2);
-      std::vector<double> upperBound(2);
+      vec<double> displacement;
+      abt::point<2> position;
+      abt::point<2> lowerBound;
+      abt::point<2> upperBound;
 
       // Calculate the new particle position and displacement.
       if (particleType == 0) {
@@ -327,7 +331,7 @@ int main(int argc, char **argv)
       upperBound[1] = position[1] + radius;
 
       // Generate the AABB.
-      aabb::AABB aabb(lowerBound, upperBound);
+      abt::aabb<2> aabb(lowerBound, upperBound);
 
       // Query AABB overlaps with small particles.
       std::vector<unsigned int> particles = treeSmall.query(aabb);
@@ -417,16 +421,15 @@ int main(int argc, char **argv)
 
 // FUNCTION DEFINITIONS
 
-bool overlaps(std::vector<double> &position1,
-              std::vector<double> &position2,
-              const std::vector<bool> &periodicity,
-              const std::vector<double> &boxSize,
+bool overlaps(abt::point<2> &position1,
+              abt::point<2> &position2,
+              const vec<bool> &periodicity,
+              const vec<double> &boxSize,
               double cutOff)
 {
   // Calculate particle separation.
-  std::vector<double> separation;
-  separation.push_back(position1[0] - position2[0]);
-  separation.push_back(position1[1] - position2[1]);
+  vec<double> separation{(position1[0] - position2[0]),
+                         (position1[1] - position2[1])};
 
   // Calculate minimum image separation.
   minimumImage(separation, periodicity, boxSize);
@@ -439,9 +442,9 @@ bool overlaps(std::vector<double> &position1,
     return false;
 }
 
-void minimumImage(std::vector<double> &separation,
-                  const std::vector<bool> &periodicity,
-                  const std::vector<double> &boxSize)
+void minimumImage(vec<double> &separation,
+                  const vec<bool> &periodicity,
+                  const vec<double> &boxSize)
 {
   for (unsigned int i = 0; i < 2; i++) {
     if (separation[i] < -0.5 * boxSize[i]) {
@@ -455,9 +458,9 @@ void minimumImage(std::vector<double> &separation,
   }
 }
 
-void periodicBoundaries(std::vector<double> &position,
-                        const std::vector<bool> &periodicity,
-                        const std::vector<double> &boxSize)
+void periodicBoundaries(abt::point<2> &position,
+                        const vec<bool> &periodicity,
+                        const vec<double> &boxSize)
 {
   for (unsigned int i = 0; i < 2; i++) {
     if (position[i] < 0) {
@@ -472,8 +475,8 @@ void periodicBoundaries(std::vector<double> &position,
 }
 
 void printVMD(const std::string &fileName,
-              const std::vector<std::vector<double> > &positionsSmall,
-              const std::vector<std::vector<double> > &positionsLarge)
+              const std::vector<abt::point<2>> &positionsSmall,
+              const std::vector<abt::point<2>> &positionsLarge)
 {
   FILE *pFile;
   pFile = fopen(fileName.c_str(), "a");
