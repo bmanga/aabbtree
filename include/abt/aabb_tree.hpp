@@ -707,21 +707,23 @@ class tree {
     }
 
     // Test overlap of particle AABB against all other particles.
-    return query(particle, m_nodes[m_particle_map.find(particle)->second].bb);
+    return query(m_nodes[m_particle_map.find(particle)->second].bb);
   }
 
   //! Query the tree to find candidate interactions for an AABB.
-  /*! \param particle
-          The particle index.
-
-      \param aabb
+  /*! \param aabb
           The AABB.
 
       \return particles
           A vector of particle indices.
    */
-  std::vector<unsigned int> query(unsigned int particle, const aabb &aabb)
+  std::vector<unsigned int> query(const aabb &aabb)
   {
+    // Make sure the tree isn't empty.
+    if (m_particle_map.size() == 0) {
+      return std::vector<unsigned int>();
+    }
+
     std::vector<unsigned int> stack;
     stack.reserve(256);
     stack.push_back(m_root);
@@ -759,10 +761,7 @@ class tree {
       if (aabb.overlaps(nodeAABB, m_touch_is_overlap)) {
         // Check that we're at a leaf node.
         if (m_nodes[node].isLeaf()) {
-          // Can't interact with itself.
-          if (m_nodes[node].particle != particle) {
-            particles.push_back(m_nodes[node].particle);
-          }
+          particles.push_back(m_nodes[node].particle);
         }
         else {
           stack.push_back(m_nodes[node].left);
@@ -772,24 +771,6 @@ class tree {
     }
 
     return particles;
-  }
-
-  //! Query the tree to find candidate interactions for an AABB.
-  /*! \param aabb
-          The AABB.
-
-      \return particles
-          A vector of particle indices.
-   */
-  std::vector<unsigned int> query(const aabb &aabb)
-  {
-    // Make sure the tree isn't empty.
-    if (m_particle_map.size() == 0) {
-      return std::vector<unsigned int>();
-    }
-
-    // Test overlap of AABB against all particles.
-    return query(std::numeric_limits<unsigned int>::max(), aabb);
   }
 
   //! Get a particle AABB.
