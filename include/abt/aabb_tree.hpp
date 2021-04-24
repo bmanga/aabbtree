@@ -743,7 +743,7 @@ class tree {
    */
 
   template <class Query>
-  std::vector<unsigned int> query(const Query &query)
+  std::vector<unsigned int> query(const Query &query) const
   {
     constexpr bool query_is_point = std::is_same_v<Query, point>;
     constexpr bool query_is_aabb = std::is_same_v<Query, aabb>;
@@ -814,9 +814,9 @@ class tree {
   /*! \param particle
           The particle index.
    */
-  const aabb &getAABB(unsigned int particle)
+  const aabb &getAABB(unsigned int particle) const
   {
-    return m_nodes[m_particle_map[particle]].bb;
+    return m_nodes[m_particle_map.at(particle)].bb;
   }
 
   //! Get the height of the tree.
@@ -1500,7 +1500,7 @@ class tree {
       \return
           Whether a periodic shift has been applied.
    */
-  bool minimumImage(vec<double> &separation, vec<double> &shift)
+  bool minimumImage(vec<double> &separation, vec<double> &shift) const
   {
     bool isShifted = false;
 
