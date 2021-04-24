@@ -43,14 +43,16 @@
 const unsigned int NULL_NODE = 0xffffffff;
 
 namespace abt {
-template <unsigned Dim, typename Float = double>
+template <unsigned Dim, typename ValTy = double>
 struct point {
-  using value_type = Float;
+  using value_type = ValTy;
 
-  template <typename... Floats>
-  point(Floats... floats) : values{Float(floats)...}
+  template <typename... Values>
+  point(Values... values) : values{value_type(values)...}
   {
   }
+
+  bool operator==(const point &other) const { return values == other.values; }
 
   value_type x() { return values[0]; }
   value_type y() { return values[1]; }
@@ -61,7 +63,7 @@ struct point {
   value_type &operator[](size_t idx) { return values[idx]; }
   const value_type &operator[](size_t idx) const { return values[idx]; }
 
-  std::array<Float, Dim> values;
+  std::array<value_type, Dim> values;
 };
 /*! \brief The axis-aligned bounding box object.
 
@@ -73,11 +75,11 @@ struct point {
     Class member functions provide functionality for merging AABB objects
     and testing overlap with other AABBs.
  */
-template <unsigned Dim, typename Float = double>
+template <unsigned Dim, typename ValTy = double>
 class aabb {
  public:
-  using point = abt::point<Dim, Float>;
-  using rt = Float;
+  using point = abt::point<Dim, ValTy>;
+  using value_type = ValTy;
 
   /// Constructor.
   aabb() = default;
@@ -97,22 +99,22 @@ class aabb {
   }
 
   /// Compute the surface area of the box.
-  rt computeSurfaceArea() const
+  value_type computeSurfaceArea() const
   {
     // Sum of "area" of all the sides.
-    rt sum = 0;
+    value_type sum = 0;
 
     // General formula for one side: hold one dimension constant
     // and multiply by all the other ones.
     for (unsigned int d1 = 0; d1 < Dim; d1++) {
       // "Area" of current side.
-      rt product = 1;
+      value_type product = 1;
 
       for (unsigned int d2 = 0; d2 < Dim; d2++) {
         if (d1 == d2)
           continue;
 
-        rt dx = upperBound[d2] - lowerBound[d2];
+        value_type dx = upperBound[d2] - lowerBound[d2];
         product *= dx;
       }
 
@@ -120,11 +122,11 @@ class aabb {
       sum += product;
     }
 
-    return rt(2.0) * sum;
+    return 2 * sum;
   }
 
   /// Get the surface area of the box.
-  rt getSurfaceArea() const { return surfaceArea; }
+  value_type getSurfaceArea() const { return surfaceArea; }
 
   //! Merge two AABBs into this one.
   /*! \param aabb1
@@ -225,7 +227,7 @@ class aabb {
   point centre;
 
   /// The AABB's surface area.
-  rt surfaceArea;
+  value_type surfaceArea;
 };
 
 /*! \brief The dynamic AABB tree.
@@ -236,11 +238,12 @@ class aabb {
     periodic and non-periodic boxes, as well as boxes with partial
     periodicity, e.g. periodic along specific axes.
  */
-template <unsigned Dim, typename Float = double>
+template <unsigned Dim, typename ValTy = double>
 class tree {
  public:
-  using aabb = abt::aabb<Dim, Float>;
-  using point = abt::point<Dim, Float>;
+  using value_type = ValTy;
+  using aabb = abt::aabb<Dim, value_type>;
+  using point = abt::point<Dim, value_type>;
   template <typename Ty>
   using vec = std::array<Ty, Dim>;
 
@@ -290,9 +293,8 @@ class tree {
   };
 
  public:
-
   //! Constructor (non-periodic).
-  /*! \param skinThickness_
+  /*! \param skin_thickness
           The skin thickness for fattened AABBs, as a fraction
           of the AABB base length.
 
@@ -302,11 +304,11 @@ class tree {
       \param touchIsOverlap
           Does touching count as overlapping in query operations?
    */
-  tree(double skinThickness = 0.05,
+  tree(value_type skin_thickness = 0,
        unsigned int nParticles = 16,
        bool touchIsOverlap = true)
       : m_is_periodic(false),
-        m_skin_thickness(skinThickness),
+        m_skin_thickness(skin_thickness),
         m_touch_is_overlap(touchIsOverlap)
   {
     // Initialise the periodicity vector.
@@ -430,8 +432,7 @@ class tree {
     for (unsigned int i = 0; i < Dim; i++) {
       m_nodes[node].bb.lowerBound[i] = position[i] - radius;
       m_nodes[node].bb.upperBound[i] = position[i] + radius;
-      size[i] =
-          m_nodes[node].bb.upperBound[i] - m_nodes[node].bb.lowerBound[i];
+      size[i] = m_nodes[node].bb.upperBound[i] - m_nodes[node].bb.lowerBound[i];
     }
 
     // Fatten the AABB.
@@ -838,6 +839,13 @@ class tree {
 
     return maxBalance;
   }
+
+  void set_touch_is_overlap(bool is_overlap)
+  {
+    m_touch_is_overlap = is_overlap;
+  }
+
+  bool is_touch_overlap() const { return m_touch_is_overlap; }
 
   //! Compute the surface area ratio of the tree.
   /*! \return
@@ -1496,6 +1504,22 @@ class tree {
     return isShifted;
   }
 };
+
+// Utility typedefs
+#define TYPEDEFS(suffix, dim, type)       \
+  using point##suffix = point<dim, type>; \
+  using aabb##suffix = aabb<dim, type>;   \
+  using tree##suffix = tree<dim, type>
+
+TYPEDEFS(2d, 2, double);
+TYPEDEFS(2f, 2, float);
+TYPEDEFS(2i, 2, int);
+TYPEDEFS(3d, 3, double);
+TYPEDEFS(3f, 3, float);
+TYPEDEFS(3i, 3, int);
+
+#undef TYPEDEFS
+
 }  // namespace abt
 
 #endif /* _AABB_H */
