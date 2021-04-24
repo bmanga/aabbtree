@@ -23,7 +23,7 @@
 #include <fstream>
 #include <iostream>
 
-#include "AABB.h"
+#include "aabb/AABB.h"
 #include "MersenneTwister.h"
 
 #ifndef M_PI

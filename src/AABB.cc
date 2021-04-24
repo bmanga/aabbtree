@@ -24,7 +24,7 @@
   http://www.box2d.org
 */
 
-#include "AABB.h"
+#include "aabb/AABB.h"
 
 namespace aabb
 {
