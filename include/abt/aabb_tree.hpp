@@ -177,16 +177,11 @@ class aabb {
    */
   bool overlaps(const aabb &aabb, bool touchIsOverlap) const
   {
-    assert(aabb.lowerBound.size() == lowerBound.size());
-
-    bool rv = true;
-
     if (touchIsOverlap) {
       for (unsigned int i = 0; i < lowerBound.size(); ++i) {
         if (aabb.upperBound[i] < lowerBound[i] ||
             aabb.lowerBound[i] > upperBound[i]) {
-          rv = false;
-          break;
+          return false;
         }
       }
     }
@@ -194,13 +189,42 @@ class aabb {
       for (unsigned int i = 0; i < lowerBound.size(); ++i) {
         if (aabb.upperBound[i] <= lowerBound[i] ||
             aabb.lowerBound[i] >= upperBound[i]) {
-          rv = false;
-          break;
+          return false;
         }
       }
     }
 
-    return rv;
+    return true;
+  }
+
+  //! Test whether the point overlaps this one.
+  /*! \param point
+          A reference to the point.
+
+      \param touchIsOverlap
+          Does touching constitute an overlap?
+
+      \return
+          Whether the AABB overlaps.
+   */
+  bool overlaps(const point &pt, bool touchIsOverlap) const
+  {
+    if (touchIsOverlap) {
+      for (unsigned int i = 0; i < lowerBound.size(); ++i) {
+        if (pt[i] < lowerBound[i] || pt[i] > upperBound[i]) {
+          return false;
+        }
+      }
+    }
+    else {
+      for (unsigned int i = 0; i < lowerBound.size(); ++i) {
+        if (pt[i] <= lowerBound[i] || pt[i] >= upperBound[i]) {
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 
   //! Compute the centre of the AABB.
@@ -717,8 +741,14 @@ class tree {
       \return particles
           A vector of particle indices.
    */
-  std::vector<unsigned int> query(const aabb &aabb)
+
+  template <class Query>
+  std::vector<unsigned int> query(const Query &query)
   {
+    constexpr bool query_is_point = std::is_same_v<Query, point>;
+    constexpr bool query_is_aabb = std::is_same_v<Query, aabb>;
+    static_assert(query_is_point || query_is_aabb,
+                  "Only point or aabb queries are supported");
     // Make sure the tree isn't empty.
     if (m_particle_map.size() == 0) {
       return std::vector<unsigned int>();
@@ -743,8 +773,15 @@ class tree {
       if (m_is_periodic) {
         vec<double> separation;
         vec<double> shift;
+        point center;
+        if constexpr (query_is_point) {
+          center = query;
+        }
+        else {
+          center = query.centre;
+        }
         for (unsigned int i = 0; i < Dim; i++)
-          separation[i] = nodeAABB.centre[i] - aabb.centre[i];
+          separation[i] = nodeAABB.centre[i] - center[i];
 
         bool isShifted = minimumImage(separation, shift);
 
@@ -758,7 +795,7 @@ class tree {
       }
 
       // Test for overlap between the AABBs.
-      if (aabb.overlaps(nodeAABB, m_touch_is_overlap)) {
+      if (nodeAABB.overlaps(query, m_touch_is_overlap)) {
         // Check that we're at a leaf node.
         if (m_nodes[node].isLeaf()) {
           particles.push_back(m_nodes[node].particle);

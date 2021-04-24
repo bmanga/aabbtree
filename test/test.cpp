@@ -63,9 +63,15 @@ TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, short)
   t.insertParticle(2, {1, 1}, {3, 3});
   t.insertParticle(3, {2, 2}, {4, 4});
   t.insertParticle(4, {5, 5}, {7, 7});
-  auto intersections = t.query({{1, 1}, {2, 2}});
+  auto intersections = t.query(aabb{{1, 1}, {2, 2}});
   REQUIRE(intersections.size() == 3);
   t.set_touch_is_overlap(false);
-  intersections = t.query({{1, 1}, {2, 2}});
+  intersections = t.query(aabb{{1, 1}, {2, 2}});
   REQUIRE(intersections.size() == 2);
+  t.set_touch_is_overlap(true);
+  intersections = t.query(point{1, 1});
+  REQUIRE(intersections.size() == 2);
+  t.set_touch_is_overlap(false);
+  intersections = t.query(point{1, 1});
+  REQUIRE(intersections.size() == 1);
 }
