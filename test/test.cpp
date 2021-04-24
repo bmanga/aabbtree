@@ -3,7 +3,8 @@
 #include <abt/aabb_tree.hpp>
 
 using namespace abt;
-TEST_CASE("point") {
+TEST_CASE("point")
+{
   auto pt2d = point<2, double>{3, 5};
   auto pt2i = point<2, int>{3, 5};
   auto pt3d = point<3, double>{3, 5};
@@ -13,8 +14,8 @@ TEST_CASE("point") {
   REQUIRE(pt3i[2] == 0);
 }
 
-
-TEST_CASE_TEMPLATE("aabb 2d", T, double, float, int, short) {
+TEST_CASE_TEMPLATE("aabb 2d", T, double, float, int, short)
+{
   using aabb = aabb<2, T>;
   using point = aabb::point;
   auto bb2d = aabb();
@@ -30,7 +31,8 @@ TEST_CASE_TEMPLATE("aabb 2d", T, double, float, int, short) {
 
   auto bb2d1 = aabb({2, 2}, {4, 4});
   auto bb2d2 = aabb({3, 3}, {5, 5});
-  SUBCASE("merge") {
+  SUBCASE("merge")
+  {
     bb2d.merge(bb2d1, bb2d2);
     REQUIRE(bb2d.lowerBound == point{2, 2});
     REQUIRE(bb2d.upperBound == point{5, 5});
@@ -38,7 +40,8 @@ TEST_CASE_TEMPLATE("aabb 2d", T, double, float, int, short) {
     REQUIRE(bb2d.surfaceArea == 12);
     REQUIRE(bb2d.centre == point{3.5, 3.5});
   }
-  SUBCASE("contains") {
+  SUBCASE("contains")
+  {
     REQUIRE(bb2d.contains(bb2d1));
     REQUIRE(!bb2d.contains(bb2d2));
   }
@@ -49,23 +52,20 @@ TEST_CASE_TEMPLATE("aabb 2d", T, double, float, int, short) {
   }
 }
 
-TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, short) {
+TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, short)
+{
   using tree = tree<2, T>;
   using aabb = tree::aabb;
   using point = tree::point;
-
 
   tree t;
   t.insertParticle(1, {0, 0}, {2, 2});
   t.insertParticle(2, {1, 1}, {3, 3});
   t.insertParticle(3, {2, 2}, {4, 4});
   t.insertParticle(4, {5, 5}, {7, 7});
-  //REQUIRE(t.getNodeCount() == 4);
   auto intersections = t.query({{1, 1}, {2, 2}});
   REQUIRE(intersections.size() == 3);
   t.set_touch_is_overlap(false);
   intersections = t.query({{1, 1}, {2, 2}});
   REQUIRE(intersections.size() == 2);
 }
-
-
