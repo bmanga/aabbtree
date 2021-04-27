@@ -22,6 +22,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <chrono>
 
 #include "MersenneTwister.h"
 #include "abt/aabb_tree.hpp"
@@ -68,6 +69,8 @@ void printVMD(const std::string &,
 
 int main(int argc, char **argv)
 {
+  using clk = std::chrono::high_resolution_clock;
+  auto start = clk::now();
   // Print git commit info, if present.
 #ifdef COMMIT
   std::cout << "Git commit: " << COMMIT << "\n";
@@ -82,7 +85,7 @@ int main(int argc, char **argv)
   /*      Set parameters, initialise variables and objects.        */
   /*****************************************************************/
 
-  unsigned int nSweeps = 100000;      // The number of Monte Carlo sweeps.
+  unsigned int nSweeps = 10000;       // The number of Monte Carlo sweeps.
   unsigned int sampleInterval = 100;  // The number of sweeps per sample.
   unsigned int nSmall = 1000;         // The number of small particles.
   unsigned int nLarge = 100;          // The number of large particles.
@@ -116,7 +119,8 @@ int main(int argc, char **argv)
   vec<double> boxSize({baseLength, baseLength});
 
   // Initialise the random number generator.
-  MersenneTwister rng;
+  // Make it deterministic to compare across runs.
+  MersenneTwister rng(0);
 
   // Initialise the AABB trees.
   abt::tree<2> treeSmall(maxDisp, periodicity, boxSize, nSmall);
@@ -414,7 +418,10 @@ int main(int argc, char **argv)
     }
   }
 
-  std::cout << "Done!\n";
+  auto end = clk::now();
+  auto elapsed_s =
+      std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.;
+  std::cout << "Done! Time elapsed: " << elapsed_s << "s\n";
 
   return (EXIT_SUCCESS);
 }

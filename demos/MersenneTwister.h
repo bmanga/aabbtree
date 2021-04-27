@@ -52,7 +52,7 @@ class MersenneTwister {
         https://gist.github.com/imneme/540829265469e673d045
      */
   }
-
+  MersenneTwister(int seed) { generator.seed(seed); }
   //! Overloaded () operator.
   /*! \return A uniform random double in range [0-1]. */
   double operator()() { return default_uniform_real_distribution(generator); }
