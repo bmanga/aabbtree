@@ -637,22 +637,33 @@ class tree {
   bool any_overlap(const Query &query, bool include_touch = true) const
   {
     return any_overlap(
-        query, [](unsigned int, const aabb &) { return true; }, include_touch);
+        query, [](unsigned) { return true; }, include_touch);
   }
 
   template <class Query, class Fn>
   bool any_overlap(const Query &query, Fn &&fn, bool include_touch = true) const
   {
-    static_assert(std::is_invocable_v<Fn, unsigned int, const aabb &>,
+    constexpr bool fn_with_bb = std::is_invocable_v<Fn, unsigned, aabb>;
+    static_assert(std::is_invocable_v<Fn, unsigned int> || fn_with_bb,
                   "Wrong function signature");
     bool overlap = false;
-    auto wrap_fn = [&overlap, &fn](unsigned int id, const aabb &bb) {
-      bool success = std::forward<Fn>(fn)(id, bb);
-      overlap |= success;
-      return success ? visit_stop : visit_continue;
-    };
+    if constexpr (fn_with_bb) {
+      auto wrap_fn = [&overlap, &fn](unsigned int id, const aabb &bb) {
+        bool success = std::forward<Fn>(fn)(id, bb);
+        overlap |= success;
+        return success ? visit_stop : visit_continue;
+      };
+      visit_overlaps(query, wrap_fn, include_touch);
+    }
+    else {
+      auto wrap_fn = [&overlap, &fn](unsigned int id) {
+        bool success = std::forward<Fn>(fn)(id);
+        overlap |= success;
+        return success ? visit_stop : visit_continue;
+      };
+      visit_overlaps(query, wrap_fn, include_touch);
+    }
 
-    visit_overlaps(query, wrap_fn, include_touch);
     return overlap;
   }
 
@@ -665,10 +676,12 @@ class tree {
     constexpr bool query_is_aabb = std::is_same_v<Query, aabb>;
     static_assert(query_is_point || query_is_aabb,
                   "Only point or aabb queries are supported");
-    using rt = decltype(std::forward<Fn>(fn)(0, aabb()));
+    constexpr bool fn_with_bb = std::is_invocable_v<Fn, unsigned, aabb>;
+
+    using rt = decltype(get_return_type<fn_with_bb>(std::forward<Fn>(fn)));
     constexpr bool fn_returns_action = std::is_convertible_v<rt, visit_action>;
     static_assert(fn_returns_action || std::is_same_v<rt, void>,
-                  "Only void or visit_action types allowed");
+                  "Only void or visit_action return types are allowed");
 
     // Make sure the tree isn't empty.
     if (m_id_map.size() == 0) {
@@ -719,13 +732,24 @@ class tree {
         if (m_nodes[node].isLeaf()) {
           const auto &n = m_nodes[node];
           if constexpr (fn_returns_action) {
-            auto visit_act = std::forward<Fn>(fn)(n.id, n.bb);
+            visit_action visit_act;
+            if constexpr (fn_with_bb) {
+              visit_act = std::forward<Fn>(fn)(n.id, n.bb);
+            }
+            else {
+              visit_act = std::forward<Fn>(fn)(n.id);
+            }
             if (visit_act == visit_stop) {
               return;
             }
           }
           else {
-            std::forward<Fn>(fn)(n.id, n.bb);
+            if constexpr (fn_with_bb) {
+              std::forward<Fn>(fn)(n.id, n.bb);
+            }
+            else {
+              std::forward<Fn>(fn)(n.id);
+            }
           }
         }
         else {
@@ -881,6 +905,16 @@ class tree {
   std::unordered_map<unsigned int, unsigned int> m_id_map;
 
  private:
+  template <bool with_aabb, class Fn>
+  static decltype(auto) get_return_type(Fn &&fn)
+  {
+    if constexpr (with_aabb) {
+      return std::forward<Fn>(fn)(0, aabb());
+    }
+    else {
+      return std::forward<Fn>(fn)(0);
+    }
+  }
   //! Allocate a new node.
   /*! \return
           The index of the allocated node.
