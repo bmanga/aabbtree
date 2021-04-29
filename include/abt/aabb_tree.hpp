@@ -546,13 +546,13 @@ class tree {
   /*! \param particle
           The particle index (particleMap will be used to map the node).
    */
-  void removeParticle(unsigned int particle)
+  void remove(unsigned int id)
   {
     // Map iterator.
     std::unordered_map<unsigned int, unsigned int>::iterator it;
 
     // Find the particle.
-    it = m_particle_map.find(particle);
+    it = m_particle_map.find(id);
 
     // The particle doesn't exist.
     if (it == m_particle_map.end()) {
