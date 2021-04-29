@@ -379,7 +379,7 @@ class tree {
        unsigned int nParticles = 16)
       : m_skin_thickness(skinThickness),
         m_periodicity(periodicity),
-        m_box_size(boxSize),
+        m_box_size(boxSize)
   {
     // Initialise the tree.
     m_root = NULL_NODE;
@@ -721,7 +721,7 @@ class tree {
       \return particles
           A vector of particle indices.
    */
-  std::vector<unsigned int> query(unsigned int particle)
+  std::vector<unsigned int> get_overlaps(unsigned int particle)
   {
     // Make sure that this is a valid particle.
     if (m_particle_map.count(particle) == 0) {
@@ -740,7 +740,7 @@ class tree {
           A vector of particle indices.
    */
   template <class Query>
-  std::vector<unsigned int> query(const Query &query, bool include_touch = true) const
+  std::vector<unsigned int> get_overlaps(const Query &query, bool include_touch = true) const
   {
     std::vector<unsigned int> particles;
     visit_overlaps(query, [&](unsigned int particle, const aabb &bb) {
