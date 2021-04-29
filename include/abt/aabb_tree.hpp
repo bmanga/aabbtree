@@ -540,42 +540,6 @@ class tree {
   /*! \param entry
           The entry index (entryMap will be used to map the node).
 
-      \param position
-          The position vector of the entry.
-
-      \param radius
-          The radius of the entry.
-
-      \param alwaysReinsert
-          Always reinsert the entry, even if it's within its old AABB
-     (default:false)
-
-      \return
-          Whether the entry was reinserted.
-   */
-  bool update(unsigned int id,
-              const point &position,
-              double radius,
-              bool always_reinsert = false)
-  {
-    // AABB bounds vectors.
-    point lowerBound;
-    point upperBound;
-
-    // Compute the AABB limits.
-    for (unsigned int i = 0; i < Dim; i++) {
-      lowerBound[i] = position[i] - radius;
-      upperBound[i] = position[i] + radius;
-    }
-
-    // Update the entry.
-    return update(id, lowerBound, upperBound, always_reinsert);
-  }
-
-  //! Update the tree if a entry moves outside its fattened AABB.
-  /*! \param entry
-          The entry index (entryMap will be used to map the node).
-
       \param lowerBound
           The lower bound in each dimension.
 
