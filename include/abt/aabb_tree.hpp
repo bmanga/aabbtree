@@ -433,7 +433,7 @@ class tree {
       \param radius
           The radius of the particle.
    */
-  void insertParticle(unsigned int particle,
+  void insert(unsigned int particle,
                       const point &position,
                       double radius)
   {
@@ -488,12 +488,12 @@ class tree {
       \param upperBound
           The upper bound in each dimension.
    */
-  void insertParticle(unsigned int particle,
-                      const point &lowerBound,
-                      const point &upperBound)
+  void insert(unsigned int id,
+                      const point &lower_bound,
+                      const point &upper_bound)
   {
     // Make sure the particle doesn't already exist.
-    if (m_particle_map.count(particle) != 0) {
+    if (m_particle_map.count(id) != 0) {
       throw std::invalid_argument("[ERROR]: Particle already exists in tree!");
     }
 
@@ -506,14 +506,14 @@ class tree {
     // Compute the AABB limits.
     for (unsigned int i = 0; i < Dim; i++) {
       // Validate the bound.
-      if (lowerBound[i] > upperBound[i]) {
+      if (lower_bound[i] > upper_bound[i]) {
         throw std::invalid_argument(
             "[ERROR]: AABB lower bound is greater than the upper bound!");
       }
 
-      m_nodes[node].bb.lowerBound[i] = lowerBound[i];
-      m_nodes[node].bb.upperBound[i] = upperBound[i];
-      size[i] = upperBound[i] - lowerBound[i];
+      m_nodes[node].bb.lowerBound[i] = lower_bound[i];
+      m_nodes[node].bb.upperBound[i] = upper_bound[i];
+      size[i] = upper_bound[i] - lower_bound[i];
     }
 
     // Fatten the AABB.
@@ -532,11 +532,11 @@ class tree {
 
     // Add the new particle to the map.
     m_particle_map.insert(
-        std::unordered_map<unsigned int, unsigned int>::value_type(particle,
+        std::unordered_map<unsigned int, unsigned int>::value_type(id,
                                                                    node));
 
     // Store the particle index.
-    m_nodes[node].particle = particle;
+    m_nodes[node].particle = id;
   }
 
   /// Return the number of particles in the tree.

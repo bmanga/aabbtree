@@ -193,7 +193,7 @@ int main(int argc, char **argv)
     }
 
     // Insert the particle into the tree.
-    treeLarge.insertParticle(i, position, radiusLarge);
+    treeLarge.insert(i, position, radiusLarge);
 
     // Store the position.
     positionsLarge[i] = position;
@@ -270,7 +270,7 @@ int main(int argc, char **argv)
     }
 
     // Insert particle into tree.
-    treeSmall.insertParticle(i, position, radiusSmall);
+    treeSmall.insert(i, position, radiusSmall);
 
     // Store the position.
     positionsSmall[i] = position;
