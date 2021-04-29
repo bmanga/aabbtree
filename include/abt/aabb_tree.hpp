@@ -331,11 +331,9 @@ class tree {
           Does touching count as overlapping in query operations?
    */
   tree(value_type skin_thickness = 0,
-       unsigned int nParticles = 16,
-       bool touchIsOverlap = true)
+       unsigned int nParticles = 16)
       : m_is_periodic(false),
-        m_skin_thickness(skin_thickness),
-        m_touch_is_overlap(touchIsOverlap)
+        m_skin_thickness(skin_thickness)
   {
     // Initialise the periodicity vector.
     std::fill(m_periodicity.begin(), m_periodicity.end(), false);
@@ -378,12 +376,10 @@ class tree {
   tree(double skinThickness,
        const vec<bool> &periodicity,
        const vec<double> &boxSize,
-       unsigned int nParticles = 16,
-       bool touchIsOverlap = true)
+       unsigned int nParticles = 16)
       : m_skin_thickness(skinThickness),
         m_periodicity(periodicity),
         m_box_size(boxSize),
-        m_touch_is_overlap(touchIsOverlap)
   {
     // Initialise the tree.
     m_root = NULL_NODE;
@@ -744,19 +740,23 @@ class tree {
           A vector of particle indices.
    */
   template <class Query>
-  std::vector<unsigned int> query(const Query &query) const
+  std::vector<unsigned int> query(const Query &query, bool include_touch = true) const
   {
     std::vector<unsigned int> particles;
     visit_overlaps(query, [&](unsigned int particle, const aabb &bb) {
       particles.push_back(particle);
-    });
+    }, include_touch);
     return particles;
   }
 
+  template <class Query>
+  bool any_overlap(const Query &query, bool include_touch = true) const
+  {
+    return any_overlap(query, [](unsigned int, const aabb &) { return true; }, include_touch);
+  }
+
   template <class Query, class Fn>
-  bool any_overlap(
-      const Query &query,
-      Fn &&fn = [](unsigned int, const aabb &) { return true; })
+  bool any_overlap(const Query &query, Fn &&fn, bool include_touch = true) const
   {
     static_assert(std::is_invocable_v<Fn, unsigned int, const aabb &>,
                   "Wrong function signature");
@@ -767,12 +767,12 @@ class tree {
       return success ? visit_stop : visit_continue;
     };
 
-    visit_overlaps(query, wrap_fn);
+    visit_overlaps(query, wrap_fn, include_touch);
     return overlap;
   }
 
   template <class Query, class Fn>
-  void visit_overlaps(const Query &query, Fn &&fn) const
+  void visit_overlaps(const Query &query, Fn &&fn, bool include_touch = true) const
   {
     constexpr bool query_is_point = std::is_same_v<Query, point>;
     constexpr bool query_is_aabb = std::is_same_v<Query, aabb>;
@@ -827,7 +827,7 @@ class tree {
       }
 
       // Test for overlap between the AABBs.
-      if (nodeAABB.overlaps(query, m_touch_is_overlap)) {
+      if (nodeAABB.overlaps(query, include_touch)) {
         // Check that we're at a leaf node.
         if (m_nodes[node].isLeaf()) {
           const auto &n = m_nodes[node];
@@ -896,13 +896,6 @@ class tree {
 
     return maxBalance;
   }
-
-  void set_touch_is_overlap(bool is_overlap)
-  {
-    m_touch_is_overlap = is_overlap;
-  }
-
-  bool is_touch_overlap() const { return m_touch_is_overlap; }
 
   //! Compute the surface area ratio of the tree.
   /*! \return
@@ -1050,9 +1043,6 @@ class tree {
 
   /// A map between particle and node indices.
   std::unordered_map<unsigned int, unsigned int> m_particle_map;
-
-  /// Does touching count as overlapping in tree queries?
-  bool m_touch_is_overlap;
 
   //! Allocate a new node.
   /*! \return

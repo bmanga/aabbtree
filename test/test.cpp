@@ -66,14 +66,11 @@ TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, short)
   auto intersections = t.query(aabb{{1, 1}, {2, 2}});
   REQUIRE(intersections.size() == 3);
   REQUIRE(t.any_overlap(aabb{{1, 1}, {2, 2}}));
-  t.set_touch_is_overlap(false);
-  intersections = t.query(aabb{{1, 1}, {2, 2}});
+  intersections = t.query(aabb{{1, 1}, {2, 2}}, false);
   REQUIRE(intersections.size() == 2);
-  t.set_touch_is_overlap(true);
   intersections = t.query(point{1, 1});
   REQUIRE(intersections.size() == 2);
   REQUIRE(t.any_overlap(point{1, 1}));
-  t.set_touch_is_overlap(false);
-  intersections = t.query(point{1, 1});
+  intersections = t.query(point{1, 1}, false);
   REQUIRE(intersections.size() == 1);
 }
