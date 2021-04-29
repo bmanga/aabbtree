@@ -277,14 +277,14 @@ class tree {
   /*! \brief A node of the AABB tree.
 
    Each node of the tree contains an AABB object which corresponds to a
-   particle, or a group of particles, in the simulation box. The AABB
-   objects of individual particles are "fattened" before they are stored
+   entry, or a group of entrys, in the simulation box. The AABB
+   objects of individual entrys are "fattened" before they are stored
    to avoid having to continually update and rebalance the tree when
    displacements are small.
 
    Nodes are aware of their position within in the tree. The isLeaf member
    function allows the tree to query whether the node is a leaf, i.e. to
-   determine whether it holds a single particle.
+   determine whether it holds a single entry.
   */
   struct node {
     /// Constructor.
@@ -308,8 +308,8 @@ class tree {
     /// Height of the node. This is 0 for a leaf and -1 for a free node.
     int height = 0;
 
-    /// The index of the particle that the node contains (leaf nodes only).
-    unsigned int particle = 0;
+    /// The id of the entry that the node contains (leaf nodes only).
+    unsigned int id = 0;
 
     //! Test whether the node is a leaf.
     /*! \return
@@ -324,13 +324,13 @@ class tree {
           The skin thickness for fattened AABBs, as a fraction
           of the AABB base length.
 
-      \param nParticles
-          The number of particles (for fixed particle number systems).
+      \param nentrys
+          The number of entrys (for fixed entry number systems).
 
       \param touchIsOverlap
           Does touching count as overlapping in query operations?
    */
-  tree(value_type skin_thickness = 0, unsigned int nParticles = 16)
+  tree(value_type skin_thickness = 0, unsigned int initial_size = 16)
       : m_is_periodic(false), m_skin_thickness(skin_thickness)
   {
     // Initialise the periodicity vector.
@@ -339,7 +339,7 @@ class tree {
     // Initialise the tree.
     m_root = NULL_NODE;
     m_node_count = 0;
-    m_node_capacity = nParticles;
+    m_node_capacity = initial_size;
     m_nodes.resize(m_node_capacity);
 
     // Build a linked list for the list of free nodes.
@@ -365,8 +365,8 @@ class tree {
       \param boxSize
           The size of the simulation box in each dimension.
 
-      \param nParticles
-          The number of particles (for fixed particle number systems).
+      \param nentrys
+          The number of entrys (for fixed entry number systems).
 
       \param touchIsOverlap
           Does touching count as overlapping in query operations?
@@ -374,7 +374,7 @@ class tree {
   tree(double skinThickness,
        const vec<bool> &periodicity,
        const vec<double> &boxSize,
-       unsigned int nParticles = 16)
+       unsigned int initial_size = 16)
       : m_skin_thickness(skinThickness),
         m_periodicity(periodicity),
         m_box_size(boxSize)
@@ -382,7 +382,7 @@ class tree {
     // Initialise the tree.
     m_root = NULL_NODE;
     m_node_count = 0;
-    m_node_capacity = nParticles;
+    m_node_capacity = initial_size;
     m_nodes.resize(m_node_capacity);
 
     // Build a linked list for the list of free nodes.
@@ -423,26 +423,26 @@ class tree {
    */
   void setBoxSize(const vec<double> &box_size) { m_box_size = box_size; }
 
-  //! Insert a particle into the tree (point particle).
+  //! Insert a entry into the tree (point entry).
   /*! \param index
-          The index of the particle.
+          The index of the entry.
 
       \param position
-          The position vector of the particle.
+          The position vector of the entry.
 
       \param radius
-          The radius of the particle.
+          The radius of the entry.
    */
-  void insert(unsigned int particle,
+  void insert(unsigned int id,
                       const point &position,
                       double radius)
   {
-    // Make sure the particle doesn't already exist.
-    if (m_particle_map.count(particle) != 0) {
-      throw std::invalid_argument("[ERROR]: Particle already exists in tree!");
+    // Make sure the entry doesn't already exist.
+    if (m_id_map.count(id) != 0) {
+      throw std::invalid_argument("[ERROR]: entry already exists in tree!");
     }
 
-    // Allocate a new node for the particle.
+    // Allocate a new node for the entry.
     unsigned int node = allocateNode();
 
     // AABB size in each dimension.
@@ -469,18 +469,18 @@ class tree {
     // Insert a new leaf into the tree.
     insertLeaf(node);
 
-    // Add the new particle to the map.
-    m_particle_map.insert(
-        std::unordered_map<unsigned int, unsigned int>::value_type(particle,
+    // Add the new entry to the map.
+    m_id_map.insert(
+        std::unordered_map<unsigned int, unsigned int>::value_type(id,
                                                                    node));
 
-    // Store the particle index.
-    m_nodes[node].particle = particle;
+    // Store the entry index.
+    m_nodes[node].id = id;
   }
 
-  //! Insert a particle into the tree (arbitrary shape with bounding box).
+  //! Insert a entry into the tree (arbitrary shape with bounding box).
   /*! \param index
-          The index of the particle.
+          The index of the entry.
 
       \param lowerBound
           The lower bound in each dimension.
@@ -492,12 +492,12 @@ class tree {
                       const point &lower_bound,
                       const point &upper_bound)
   {
-    // Make sure the particle doesn't already exist.
-    if (m_particle_map.count(id) != 0) {
-      throw std::invalid_argument("[ERROR]: Particle already exists in tree!");
+    // Make sure the entry doesn't already exist.
+    if (m_id_map.count(id) != 0) {
+      throw std::invalid_argument("[ERROR]: entry already exists in tree!");
     }
 
-    // Allocate a new node for the particle.
+    // Allocate a new node for the entry.
     unsigned int node = allocateNode();
 
     // AABB size in each dimension.
@@ -530,40 +530,39 @@ class tree {
     // Insert a new leaf into the tree.
     insertLeaf(node);
 
-    // Add the new particle to the map.
-    m_particle_map.insert(
+    // Add the new entry to the map.
+    m_id_map.insert(
         std::unordered_map<unsigned int, unsigned int>::value_type(id,
                                                                    node));
 
-    // Store the particle index.
-    m_nodes[node].particle = id;
+    m_nodes[node].id = id;
   }
 
-  /// Return the number of particles in the tree.
-  unsigned int size() const { return m_particle_map.size(); }
+  /// Return the number of entrys in the tree.
+  unsigned int size() const { return m_id_map.size(); }
 
-  //! Remove a particle from the tree.
-  /*! \param particle
-          The particle index (particleMap will be used to map the node).
+  //! Remove a entry from the tree.
+  /*! \param entry
+          The entry index (entryMap will be used to map the node).
    */
   void remove(unsigned int id)
   {
     // Map iterator.
     std::unordered_map<unsigned int, unsigned int>::iterator it;
 
-    // Find the particle.
-    it = m_particle_map.find(id);
+    // Find the entry.
+    it = m_id_map.find(id);
 
-    // The particle doesn't exist.
-    if (it == m_particle_map.end()) {
-      throw std::invalid_argument("[ERROR]: Invalid particle index!");
+    // The entry doesn't exist.
+    if (it == m_id_map.end()) {
+      throw std::invalid_argument("[ERROR]: Invalid entry index!");
     }
 
     // Extract the node index.
     unsigned int node = it->second;
 
-    // Erase the particle from the map.
-    m_particle_map.erase(it);
+    // Erase the entry from the map.
+    m_id_map.erase(it);
 
     assert(node < m_node_capacity);
     assert(m_nodes[node].isLeaf());
@@ -572,15 +571,15 @@ class tree {
     freeNode(node);
   }
 
-  /// Remove all particles from the tree.
+  /// Remove all entrys from the tree.
   void removeAll()
   {
-    // Iterator pointing to the start of the particle map.
+    // Iterator pointing to the start of the entry map.
     std::unordered_map<unsigned int, unsigned int>::iterator it =
-        m_particle_map.begin();
+        m_id_map.begin();
 
     // Iterate over the map.
-    while (it != m_particle_map.end()) {
+    while (it != m_id_map.end()) {
       // Extract the node index.
       unsigned int node = it->second;
 
@@ -593,26 +592,26 @@ class tree {
       it++;
     }
 
-    // Clear the particle map.
-    m_particle_map.clear();
+    // Clear the entry map.
+    m_id_map.clear();
   }
 
-  //! Update the tree if a particle moves outside its fattened AABB.
-  /*! \param particle
-          The particle index (particleMap will be used to map the node).
+  //! Update the tree if a entry moves outside its fattened AABB.
+  /*! \param entry
+          The entry index (entryMap will be used to map the node).
 
       \param position
-          The position vector of the particle.
+          The position vector of the entry.
 
       \param radius
-          The radius of the particle.
+          The radius of the entry.
 
       \param alwaysReinsert
-          Always reinsert the particle, even if it's within its old AABB
+          Always reinsert the entry, even if it's within its old AABB
      (default:false)
 
       \return
-          Whether the particle was reinserted.
+          Whether the entry was reinserted.
    */
   bool update(unsigned int id,
               const point &position,
@@ -629,13 +628,13 @@ class tree {
       upperBound[i] = position[i] + radius;
     }
 
-    // Update the particle.
+    // Update the entry.
     return update(id, lowerBound, upperBound, always_reinsert);
   }
 
-  //! Update the tree if a particle moves outside its fattened AABB.
-  /*! \param particle
-          The particle index (particleMap will be used to map the node).
+  //! Update the tree if a entry moves outside its fattened AABB.
+  /*! \param entry
+          The entry index (entryMap will be used to map the node).
 
       \param lowerBound
           The lower bound in each dimension.
@@ -644,7 +643,7 @@ class tree {
           The upper bound in each dimension.
 
       \param alwaysReinsert
-          Always reinsert the particle, even if it's within its old AABB
+          Always reinsert the entry, even if it's within its old AABB
      (default: false)
    */
   bool update(unsigned int id,
@@ -655,12 +654,12 @@ class tree {
     // Map iterator.
     std::unordered_map<unsigned int, unsigned int>::iterator it;
 
-    // Find the particle.
-    it = m_particle_map.find(id);
+    // Find the entry.
+    it = m_id_map.find(id);
 
-    // The particle doesn't exist.
-    if (it == m_particle_map.end()) {
-      throw std::invalid_argument("[ERROR]: Invalid particle index!");
+    // The entry doesn't exist.
+    if (it == m_id_map.end()) {
+      throw std::invalid_argument("[ERROR]: Invalid entry index!");
     }
 
     // Extract the node index.
@@ -686,7 +685,7 @@ class tree {
     // Create the new AABB.
     aabb aabb(lower_bound, upper_bound);
 
-    // No need to update if the particle is still within its fattened AABB.
+    // No need to update if the entry is still within its fattened AABB.
     if (!always_reinsert && m_nodes[node].bb.contains(aabb))
       return false;
 
@@ -712,43 +711,43 @@ class tree {
     return true;
   }
 
-  //! Query the tree to find candidate interactions for a particle.
-  /*! \param particle
-          The particle index.
+  //! Query the tree to find candidate interactions for a entry.
+  /*! \param entry
+          The entry index.
 
-      \return particles
-          A vector of particle indices.
+      \return entrys
+          A vector of entry indices.
    */
-  std::vector<unsigned int> get_overlaps(unsigned int particle)
+  std::vector<unsigned int> get_overlaps(unsigned int id)
   {
-    // Make sure that this is a valid particle.
-    if (m_particle_map.count(particle) == 0) {
-      throw std::invalid_argument("[ERROR]: Invalid particle index!");
+    // Make sure that this is a valid entry.
+    if (m_id_map.count(id) == 0) {
+      throw std::invalid_argument("[ERROR]: Invalid entry index!");
     }
 
-    // Test overlap of particle AABB against all other particles.
-    return query(m_nodes[m_particle_map.find(particle)->second].bb);
+    // Test overlap of entry AABB against all other entrys.
+    return query(m_nodes[m_id_map.find(id)->second].bb);
   }
 
   //! Query the tree to find candidate interactions for an AABB.
   /*! \param aabb
           The AABB.
 
-      \return particles
-          A vector of particle indices.
+      \return entrys
+          A vector of entry indices.
    */
   template <class Query>
   std::vector<unsigned int> get_overlaps(const Query &query,
                                          bool include_touch = true) const
   {
-    std::vector<unsigned int> particles;
+    std::vector<unsigned int> overlaps;
     visit_overlaps(
         query,
-        [&](unsigned int particle, const aabb &bb) {
-          particles.push_back(particle);
+        [&](unsigned int id, const aabb &bb) {
+          overlaps.push_back(id);
         },
         include_touch);
-    return particles;
+    return overlaps;
   }
 
   template <class Query>
@@ -789,7 +788,7 @@ class tree {
                   "Only void or visit_action types allowed");
 
     // Make sure the tree isn't empty.
-    if (m_particle_map.size() == 0) {
+    if (m_id_map.size() == 0) {
       return;
     }
 
@@ -837,13 +836,13 @@ class tree {
         if (m_nodes[node].isLeaf()) {
           const auto &n = m_nodes[node];
           if constexpr (fn_returns_action) {
-            auto visit_act = std::forward<Fn>(fn)(n.particle, n.bb);
+            auto visit_act = std::forward<Fn>(fn)(n.id, n.bb);
             if (visit_act == visit_stop) {
               return;
             }
           }
           else {
-            std::forward<Fn>(fn)(n.particle, n.bb);
+            std::forward<Fn>(fn)(n.id, n.bb);
           }
         }
         else {
@@ -854,13 +853,13 @@ class tree {
     }
   }
 
-  //! Get a particle AABB.
-  /*! \param particle
-          The particle index.
+  //! Get a entry AABB.
+  /*! \param entry
+          The entry index.
    */
-  const aabb &getAABB(unsigned int particle) const
+  const aabb &getAABB(unsigned int id) const
   {
-    return m_nodes[m_particle_map.at(particle)].bb;
+    return m_nodes[m_id_map.at(id)].bb;
   }
 
   //! Get the height of the tree.
@@ -1046,8 +1045,8 @@ class tree {
   /// The position of the positive minimum image.
   point m_pos_min_image;
 
-  /// A map between particle and node indices.
-  std::unordered_map<unsigned int, unsigned int> m_particle_map;
+  /// A map between entry and node indices.
+  std::unordered_map<unsigned int, unsigned int> m_id_map;
 
   //! Allocate a new node.
   /*! \return
