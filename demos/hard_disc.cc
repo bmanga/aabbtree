@@ -387,11 +387,11 @@ int main(int argc, char **argv)
           // Update the position and AABB tree.
           if (particleType == 0) {
             positionsSmall[particle] = position;
-            treeSmall.updateParticle(particle, lowerBound, upperBound);
+            treeSmall.update(particle, lowerBound, upperBound);
           }
           else {
             positionsLarge[particle] = position;
-            treeLarge.updateParticle(particle, lowerBound, upperBound);
+            treeLarge.update(particle, lowerBound, upperBound);
           }
         }
       }

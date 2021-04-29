@@ -330,10 +330,8 @@ class tree {
       \param touchIsOverlap
           Does touching count as overlapping in query operations?
    */
-  tree(value_type skin_thickness = 0,
-       unsigned int nParticles = 16)
-      : m_is_periodic(false),
-        m_skin_thickness(skin_thickness)
+  tree(value_type skin_thickness = 0, unsigned int nParticles = 16)
+      : m_is_periodic(false), m_skin_thickness(skin_thickness)
   {
     // Initialise the periodicity vector.
     std::fill(m_periodicity.begin(), m_periodicity.end(), false);
@@ -616,10 +614,10 @@ class tree {
       \return
           Whether the particle was reinserted.
    */
-  bool updateParticle(unsigned int particle,
-                      const point &position,
-                      double radius,
-                      bool alwaysReinsert = false)
+  bool update(unsigned int id,
+              const point &position,
+              double radius,
+              bool always_reinsert = false)
   {
     // AABB bounds vectors.
     point lowerBound;
@@ -632,7 +630,7 @@ class tree {
     }
 
     // Update the particle.
-    return updateParticle(particle, lowerBound, upperBound, alwaysReinsert);
+    return update(id, lowerBound, upperBound, always_reinsert);
   }
 
   //! Update the tree if a particle moves outside its fattened AABB.
@@ -649,16 +647,16 @@ class tree {
           Always reinsert the particle, even if it's within its old AABB
      (default: false)
    */
-  bool updateParticle(unsigned int particle,
-                      const point &lowerBound,
-                      const point &upperBound,
-                      bool alwaysReinsert = false)
+  bool update(unsigned int id,
+              const point &lower_bound,
+              const point &upper_bound,
+              bool always_reinsert = false)
   {
     // Map iterator.
     std::unordered_map<unsigned int, unsigned int>::iterator it;
 
     // Find the particle.
-    it = m_particle_map.find(particle);
+    it = m_particle_map.find(id);
 
     // The particle doesn't exist.
     if (it == m_particle_map.end()) {
@@ -677,19 +675,19 @@ class tree {
     // Compute the AABB limits.
     for (unsigned int i = 0; i < Dim; i++) {
       // Validate the bound.
-      if (lowerBound[i] > upperBound[i]) {
+      if (lower_bound[i] > upper_bound[i]) {
         throw std::invalid_argument(
             "[ERROR]: AABB lower bound is greater than the upper bound!");
       }
 
-      size[i] = upperBound[i] - lowerBound[i];
+      size[i] = upper_bound[i] - lower_bound[i];
     }
 
     // Create the new AABB.
-    aabb aabb(lowerBound, upperBound);
+    aabb aabb(lower_bound, upper_bound);
 
     // No need to update if the particle is still within its fattened AABB.
-    if (!alwaysReinsert && m_nodes[node].bb.contains(aabb))
+    if (!always_reinsert && m_nodes[node].bb.contains(aabb))
       return false;
 
     // Remove the current leaf.
@@ -740,19 +738,24 @@ class tree {
           A vector of particle indices.
    */
   template <class Query>
-  std::vector<unsigned int> get_overlaps(const Query &query, bool include_touch = true) const
+  std::vector<unsigned int> get_overlaps(const Query &query,
+                                         bool include_touch = true) const
   {
     std::vector<unsigned int> particles;
-    visit_overlaps(query, [&](unsigned int particle, const aabb &bb) {
-      particles.push_back(particle);
-    }, include_touch);
+    visit_overlaps(
+        query,
+        [&](unsigned int particle, const aabb &bb) {
+          particles.push_back(particle);
+        },
+        include_touch);
     return particles;
   }
 
   template <class Query>
   bool any_overlap(const Query &query, bool include_touch = true) const
   {
-    return any_overlap(query, [](unsigned int, const aabb &) { return true; }, include_touch);
+    return any_overlap(
+        query, [](unsigned int, const aabb &) { return true; }, include_touch);
   }
 
   template <class Query, class Fn>
@@ -772,7 +775,9 @@ class tree {
   }
 
   template <class Query, class Fn>
-  void visit_overlaps(const Query &query, Fn &&fn, bool include_touch = true) const
+  void visit_overlaps(const Query &query,
+                      Fn &&fn,
+                      bool include_touch = true) const
   {
     constexpr bool query_is_point = std::is_same_v<Query, point>;
     constexpr bool query_is_aabb = std::is_same_v<Query, aabb>;
