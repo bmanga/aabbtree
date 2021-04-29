@@ -705,8 +705,9 @@ class tree {
       return;
     }
 
-    std::vector<unsigned int> stack;
-    stack.reserve(256);
+    static thread_local std::vector<unsigned int> stack(64);
+    stack.clear();
+
     stack.push_back(m_root);
 
     while (stack.size() > 0) {
