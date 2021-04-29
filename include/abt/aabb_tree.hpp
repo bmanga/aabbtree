@@ -754,6 +754,24 @@ class tree {
   }
 
   template <class Query, class Fn>
+  bool any_overlap(
+      const Query &query,
+      Fn &&fn = [](unsigned int, const aabb &) { return true; })
+  {
+    static_assert(std::is_invocable_v<Fn, unsigned int, const aabb &>,
+                  "Wrong function signature");
+    bool overlap = false;
+    auto wrap_fn = [&overlap, &fn](unsigned int id, const aabb &bb) {
+      bool success = std::forward<Fn>(fn)(id, bb);
+      overlap |= success;
+      return success ? visit_stop : visit_continue;
+    };
+
+    visit_overlaps(query, wrap_fn);
+    return overlap;
+  }
+
+  template <class Query, class Fn>
   void visit_overlaps(const Query &query, Fn &&fn) const
   {
     constexpr bool query_is_point = std::is_same_v<Query, point>;
