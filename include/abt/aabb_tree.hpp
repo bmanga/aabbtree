@@ -251,8 +251,10 @@ class aabb {
   point centre;
 
   /// The AABB's surface area.
-  value_type surfaceArea;
+  value_type surfaceArea = 0;
 };
+
+enum visit_action : char { visit_stop, visit_continue };
 
 /*! \brief The dynamic AABB tree.
 
@@ -292,22 +294,22 @@ class tree {
     aabb bb;
 
     /// Index of the parent node.
-    unsigned int parent;
+    unsigned int parent = 0;
 
     /// Index of the next node.
-    unsigned int next;
+    unsigned int next = 0;
 
     /// Index of the left-hand child.
-    unsigned int left;
+    unsigned int left = 0;
 
     /// Index of the right-hand child.
-    unsigned int right;
+    unsigned int right = 0;
 
     /// Height of the node. This is 0 for a leaf and -1 for a free node.
-    int height;
+    int height = 0;
 
     /// The index of the particle that the node contains (leaf nodes only).
-    unsigned int particle;
+    unsigned int particle = 0;
 
     //! Test whether the node is a leaf.
     /*! \return
@@ -741,24 +743,36 @@ class tree {
       \return particles
           A vector of particle indices.
    */
-
   template <class Query>
   std::vector<unsigned int> query(const Query &query) const
+  {
+    std::vector<unsigned int> particles;
+    visit_overlaps(query, [&](unsigned int particle, const aabb &bb) {
+      particles.push_back(particle);
+    });
+    return particles;
+  }
+
+  template <class Query, class Fn>
+  void visit_overlaps(const Query &query, Fn &&fn) const
   {
     constexpr bool query_is_point = std::is_same_v<Query, point>;
     constexpr bool query_is_aabb = std::is_same_v<Query, aabb>;
     static_assert(query_is_point || query_is_aabb,
                   "Only point or aabb queries are supported");
+    using rt = decltype(std::forward<Fn>(fn)(0, aabb()));
+    constexpr bool fn_returns_action = std::is_convertible_v<rt, visit_action>;
+    static_assert(fn_returns_action || std::is_same_v<rt, void>,
+                  "Only void or visit_action types allowed");
+
     // Make sure the tree isn't empty.
     if (m_particle_map.size() == 0) {
-      return std::vector<unsigned int>();
+      return;
     }
 
     std::vector<unsigned int> stack;
     stack.reserve(256);
     stack.push_back(m_root);
-
-    std::vector<unsigned int> particles;
 
     while (stack.size() > 0) {
       unsigned int node = stack.back();
@@ -798,7 +812,16 @@ class tree {
       if (nodeAABB.overlaps(query, m_touch_is_overlap)) {
         // Check that we're at a leaf node.
         if (m_nodes[node].isLeaf()) {
-          particles.push_back(m_nodes[node].particle);
+          const auto &n = m_nodes[node];
+          if constexpr (fn_returns_action) {
+            auto visit_act = std::forward<Fn>(fn)(n.particle, n.bb);
+            if (visit_act == visit_stop) {
+              return;
+            }
+          }
+          else {
+            std::forward<Fn>(fn)(n.particle, n.bb);
+          }
         }
         else {
           stack.push_back(m_nodes[node].left);
@@ -806,8 +829,6 @@ class tree {
         }
       }
     }
-
-    return particles;
   }
 
   //! Get a particle AABB.
@@ -1513,7 +1534,7 @@ class tree {
       else {
         if (separation[i] >= m_pos_min_image[i]) {
           separation[i] -= m_periodicity[i] * m_box_size[i];
-          shift[i] = -m_periodicity[i] * m_box_size[i];
+          shift[i] = -(m_periodicity[i] * m_box_size[i]);
           isShifted = true;
         }
       }
