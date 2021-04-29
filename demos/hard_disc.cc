@@ -159,14 +159,7 @@ int main(int argc, char **argv)
         position[0] = boxSize[0] * rng();
         position[1] = boxSize[1] * rng();
 
-        // Compute lower and upper AABB bounds.
-        abt::point<2> lowerBound{position[0] - radiusLarge,
-                                 position[1] - radiusLarge};
-        abt::point<2> upperBound{position[0] + radiusLarge,
-                                 position[1] + radiusLarge};
-
-        // Generate the AABB.
-        abt::aabb<2> aabb(lowerBound, upperBound);
+        auto aabb = abt::aabb<2>::of_sphere(position, radiusLarge);
 
         // Query AABB overlaps.
         std::vector<unsigned int> particles = treeLarge.get_overlaps(aabb);
@@ -214,14 +207,7 @@ int main(int argc, char **argv)
       position[0] = boxSize[0] * rng();
       position[1] = boxSize[1] * rng();
 
-      // Compute lower and upper AABB bounds.
-      abt::point<2> lowerBound(
-          {position[0] - radiusSmall, position[1] - radiusSmall});
-      abt::point<2> upperBound(
-          {position[0] + radiusSmall, position[1] + radiusSmall});
-
-      // Generate the AABB.
-      abt::aabb<2> aabb(lowerBound, upperBound);
+      auto aabb = abt::aabb<2>::of_sphere(position, radiusSmall);
 
       // First query AABB overlaps with the large particles.
       std::vector<unsigned int> particles = treeLarge.get_overlaps(aabb);
@@ -326,14 +312,7 @@ int main(int argc, char **argv)
       // Apply periodic boundary conditions.
       periodicBoundaries(position, periodicity, boxSize);
 
-      // Compute lower and upper AABB bounds.
-      lowerBound[0] = position[0] - radius;
-      lowerBound[1] = position[1] - radius;
-      upperBound[0] = position[0] + radius;
-      upperBound[1] = position[1] + radius;
-
-      // Generate the AABB.
-      abt::aabb<2> aabb(lowerBound, upperBound);
+      auto aabb = abt::aabb<2>::of_sphere(position, radius);
 
       // Query AABB overlaps with small particles.
       std::vector<unsigned int> particles = treeSmall.get_overlaps(aabb);
