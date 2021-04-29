@@ -618,6 +618,24 @@ class tree {
   //! Query the tree to find candidate interactions for an AABB.
   /*! \param aabb
           The AABB.
+      \param out
+          An output iterator
+
+      \return entrys
+          A vector of entry indices.
+   */
+  template <class Query, class OutputIterator>
+  void get_overlaps(const Query &query,
+                    OutputIterator out,
+                    bool include_touch = true) const
+  {
+    visit_overlaps(
+        query, [&](unsigned int id) { *out++ = id; }, include_touch);
+  }
+
+  //! Query the tree to find candidate interactions for an AABB.
+  /*! \param aabb
+          The AABB.
 
       \return entrys
           A vector of entry indices.
@@ -628,8 +646,7 @@ class tree {
   {
     std::vector<unsigned int> overlaps;
     visit_overlaps(
-        query, [&](unsigned int id, const aabb &bb) { overlaps.push_back(id); },
-        include_touch);
+        query, [&](unsigned int id) { overlaps.push_back(id); }, include_touch);
     return overlaps;
   }
 
