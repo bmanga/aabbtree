@@ -540,7 +540,7 @@ class tree {
   }
 
   /// Return the number of particles in the tree.
-  unsigned int nParticles() { return m_particle_map.size(); }
+  unsigned int size() const { return m_particle_map.size(); }
 
   //! Remove a particle from the tree.
   /*! \param particle

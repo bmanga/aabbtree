@@ -63,6 +63,7 @@ TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, short)
   t.insert(2, {1, 1}, {3, 3});
   t.insert(3, {2, 2}, {4, 4});
   t.insert(4, {5, 5}, {7, 7});
+  REQUIRE(t.size() == 4);
   auto intersections = t.get_overlaps(aabb{{1, 1}, {2, 2}});
   REQUIRE(intersections.size() == 3);
   REQUIRE(t.any_overlap(aabb{{1, 1}, {2, 2}}));
