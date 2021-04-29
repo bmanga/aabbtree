@@ -422,7 +422,7 @@ class tree {
   /*! \param periodicity_
           Whether the system is periodic in each dimension.
    */
-  void setPeriodicity(const vec<bool> &periodicity)
+  void set_periodicity(const vec<bool> &periodicity)
   {
     m_periodicity = periodicity;
   }
@@ -431,7 +431,7 @@ class tree {
   /*! \param box_size
           The size of the simulation box in each dimension.
    */
-  void setBoxSize(const vec<double> &box_size) { m_box_size = box_size; }
+  void set_box_size(const vec<double> &box_size) { m_box_size = box_size; }
 
   //! Insert a entry into the tree (arbitrary shape with bounding box).
   /*! \param index
