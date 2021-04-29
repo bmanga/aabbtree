@@ -94,8 +94,8 @@ class aabb {
   aabb(const point &lower_bound, const point &upper_bound)
       : lowerBound(lower_bound), upperBound(upper_bound)
   {
-    surfaceArea = computeSurfaceArea();
-    centre = computeCentre();
+    surfaceArea = compute_surface_area();
+    centre = compute_center();
   }
 
   static aabb of_sphere(const point &center, value_type radius)
@@ -109,7 +109,7 @@ class aabb {
   }
 
   /// Compute the surface area of the box.
-  value_type computeSurfaceArea() const
+  value_type compute_surface_area() const
   {
     // Sum of "area" of all the sides.
     value_type sum = 0;
@@ -136,7 +136,7 @@ class aabb {
   }
 
   /// Get the surface area of the box.
-  value_type getSurfaceArea() const { return surfaceArea; }
+  value_type get_surface_area() const { return surfaceArea; }
 
   //! Merge two AABBs into this one.
   /*! \param aabb1
@@ -152,8 +152,8 @@ class aabb {
       upperBound[i] = std::max(aabb1.upperBound[i], aabb2.upperBound[i]);
     }
 
-    surfaceArea = computeSurfaceArea();
-    centre = computeCentre();
+    surfaceArea = compute_surface_area();
+    centre = compute_center();
   }
 
   //! Test whether the AABB is contained within this one.
@@ -241,7 +241,7 @@ class aabb {
   /*! \returns
           The position vector of the AABB centre.
    */
-  point computeCentre()
+  point compute_center()
   {
     point center;
 
@@ -451,7 +451,7 @@ class tree {
     }
 
     // Allocate a new node for the entry.
-    unsigned int node_idx = allocateNode();
+    unsigned int node_idx = allocate_node();
     auto &node = m_nodes[node_idx];
 
     node.bb = bb;
@@ -462,14 +462,14 @@ class tree {
       node.bb.lowerBound[i] -= m_skin_thickness * sz;
       node.bb.upperBound[i] += m_skin_thickness * sz;
     }
-    node.bb.surfaceArea = node.bb.computeSurfaceArea();
-    node.bb.centre = node.bb.computeCentre();
+    node.bb.surfaceArea = node.bb.compute_surface_area();
+    node.bb.centre = node.bb.compute_center();
 
     // Zero the height.
     node.height = 0;
 
     // Insert a new leaf into the tree.
-    insertLeaf(node_idx);
+    insert_leaf(node_idx);
 
     // Add the new entry to the map.
     m_id_map.insert(std::unordered_map<unsigned int, unsigned int>::value_type(
@@ -507,8 +507,8 @@ class tree {
     assert(node < m_node_capacity);
     assert(m_nodes[node].isLeaf());
 
-    removeLeaf(node);
-    freeNode(node);
+    remove_leaf(node);
+    free_node(node);
   }
 
   /// Remove all entrys from the tree.
@@ -526,8 +526,8 @@ class tree {
       assert(node < m_node_capacity);
       assert(m_nodes[node].isLeaf());
 
-      removeLeaf(node);
-      freeNode(node);
+      remove_leaf(node);
+      free_node(node);
 
       it++;
     }
@@ -575,7 +575,7 @@ class tree {
       return false;
 
     // Remove the current leaf.
-    removeLeaf(node_idx);
+    remove_leaf(node_idx);
 
     // Fatten the new AABB.
     for (unsigned int i = 0; i < Dim; i++) {
@@ -588,11 +588,11 @@ class tree {
     node.bb = bb;
 
     // Update the surface area and centroid.
-    node.bb.surfaceArea = node.bb.computeSurfaceArea();
-    node.bb.centre = node.bb.computeCentre();
+    node.bb.surfaceArea = node.bb.compute_surface_area();
+    node.bb.centre = node.bb.compute_center();
 
     // Insert a new leaf node.
-    insertLeaf(node_idx);
+    insert_leaf(node_idx);
 
     return true;
   }
@@ -702,7 +702,7 @@ class tree {
         for (unsigned int i = 0; i < Dim; i++)
           separation[i] = nodeAABB.centre[i] - center[i];
 
-        bool isShifted = minimumImage(separation, shift);
+        bool isShifted = minimum_image(separation, shift);
 
         // Shift the AABB.
         if (isShifted) {
@@ -740,7 +740,7 @@ class tree {
   /*! \param entry
           The entry index.
    */
-  const aabb &getAABB(unsigned int id) const
+  const aabb &get_aabb(unsigned int id) const
   {
     return m_nodes[m_id_map.at(id)].bb;
   }
@@ -749,70 +749,19 @@ class tree {
   /*! \return
           The height of the binary tree.
    */
-  unsigned int getHeight() const
+  unsigned int get_height() const
   {
     if (m_root == NULL_NODE)
       return 0;
     return m_nodes[m_root].height;
   }
 
-  //! Get the number of nodes in the tree.
-  /*! \return
-          The number of nodes in the tree.
-   */
-  unsigned int getNodeCount() const { return m_node_count; }
-
-  //! Compute the maximum balancance of the tree.
-  /*! \return
-          The maximum difference between the height of two
-          children of a node.
-   */
-  unsigned int computeMaximumBalance() const
-  {
-    unsigned int maxBalance = 0;
-    for (unsigned int i = 0; i < m_node_capacity; i++) {
-      if (m_nodes[i].height <= 1)
-        continue;
-
-      assert(m_nodes[i].isLeaf() == false);
-
-      unsigned int balance = std::abs(m_nodes[m_nodes[i].left].height -
-                                      m_nodes[m_nodes[i].right].height);
-      maxBalance = std::max(maxBalance, balance);
-    }
-
-    return maxBalance;
-  }
-
-  //! Compute the surface area ratio of the tree.
-  /*! \return
-          The ratio of the sum of the node surface area to the surface
-          area of the root node.
-   */
-  double computeSurfaceAreaRatio() const
-  {
-    if (m_root == NULL_NODE)
-      return 0.0;
-
-    double rootArea = m_nodes[m_root].bb.computeSurfaceArea();
-    double totalArea = 0.0;
-
-    for (unsigned int i = 0; i < m_node_capacity; i++) {
-      if (m_nodes[i].height < 0)
-        continue;
-
-      totalArea += m_nodes[i].bb.computeSurfaceArea();
-    }
-
-    return totalArea / rootArea;
-  }
-
   /// Validate the tree.
   void validate() const
   {
 #ifndef NDEBUG
-    validateStructure(m_root);
-    validateMetrics(m_root);
+    validate_structure(m_root);
+    validate_metrics(m_root);
 
     unsigned int freeCount = 0;
     unsigned int freeIndex = m_free_list;
@@ -823,7 +772,7 @@ class tree {
       freeCount++;
     }
 
-    assert(getHeight() == computeHeight());
+    assert(get_height() == compute_height());
     assert((m_node_count + freeCount) == m_node_capacity);
 #endif
   }
@@ -845,7 +794,7 @@ class tree {
         count++;
       }
       else
-        freeNode(i);
+        free_node(i);
     }
 
     while (count > 1) {
@@ -859,7 +808,7 @@ class tree {
           aabb aabbj = m_nodes[nodeIndices[j]].bb;
           aabb aabb;
           aabb.merge(aabbi, aabbj);
-          double cost = aabb.getSurfaceArea();
+          double cost = aabb.get_surface_area();
 
           if (cost < minCost) {
             iMin = i;
@@ -872,7 +821,7 @@ class tree {
       unsigned int index1 = nodeIndices[iMin];
       unsigned int index2 = nodeIndices[jMin];
 
-      unsigned int parent = allocateNode();
+      unsigned int parent = allocate_node();
       m_nodes[parent].left = index1;
       m_nodes[parent].right = index2;
       m_nodes[parent].height =
@@ -931,11 +880,12 @@ class tree {
   /// A map between entry and node indices.
   std::unordered_map<unsigned int, unsigned int> m_id_map;
 
+ private:
   //! Allocate a new node.
   /*! \return
           The index of the allocated node.
    */
-  unsigned int allocateNode()
+  unsigned int allocate_node()
   {
     // Exand the node pool as needed.
     if (m_free_list == NULL_NODE) {
@@ -973,7 +923,7 @@ class tree {
   /*! \param node
           The index of the node to be freed.
    */
-  void freeNode(unsigned int node)
+  void free_node(unsigned int node)
   {
     assert(node < m_node_capacity);
     assert(0 < m_node_count);
@@ -988,7 +938,7 @@ class tree {
   /*! \param leaf
           The index of the leaf node.
    */
-  void insertLeaf(unsigned int leaf)
+  void insert_leaf(unsigned int leaf)
   {
     if (m_root == NULL_NODE) {
       m_root = leaf;
@@ -1006,11 +956,11 @@ class tree {
       unsigned int left = m_nodes[index].left;
       unsigned int right = m_nodes[index].right;
 
-      double surfaceArea = m_nodes[index].bb.getSurfaceArea();
+      double surfaceArea = m_nodes[index].bb.get_surface_area();
 
       aabb combinedAABB;
       combinedAABB.merge(m_nodes[index].bb, leafAABB);
-      double combinedSurfaceArea = combinedAABB.getSurfaceArea();
+      double combinedSurfaceArea = combinedAABB.get_surface_area();
 
       // Cost of creating a new parent for this node and the new leaf.
       double cost = 2.0 * combinedSurfaceArea;
@@ -1023,13 +973,13 @@ class tree {
       if (m_nodes[left].isLeaf()) {
         aabb aabb;
         aabb.merge(leafAABB, m_nodes[left].bb);
-        costLeft = aabb.getSurfaceArea() + inheritanceCost;
+        costLeft = aabb.get_surface_area() + inheritanceCost;
       }
       else {
         aabb aabb;
         aabb.merge(leafAABB, m_nodes[left].bb);
-        double oldArea = m_nodes[left].bb.getSurfaceArea();
-        double newArea = aabb.getSurfaceArea();
+        double oldArea = m_nodes[left].bb.get_surface_area();
+        double newArea = aabb.get_surface_area();
         costLeft = (newArea - oldArea) + inheritanceCost;
       }
 
@@ -1038,13 +988,13 @@ class tree {
       if (m_nodes[right].isLeaf()) {
         aabb aabb;
         aabb.merge(leafAABB, m_nodes[right].bb);
-        costRight = aabb.getSurfaceArea() + inheritanceCost;
+        costRight = aabb.get_surface_area() + inheritanceCost;
       }
       else {
         aabb aabb;
         aabb.merge(leafAABB, m_nodes[right].bb);
-        double oldArea = m_nodes[right].bb.getSurfaceArea();
-        double newArea = aabb.getSurfaceArea();
+        double oldArea = m_nodes[right].bb.get_surface_area();
+        double newArea = aabb.get_surface_area();
         costRight = (newArea - oldArea) + inheritanceCost;
       }
 
@@ -1063,7 +1013,7 @@ class tree {
 
     // Create a new parent.
     unsigned int oldParent = m_nodes[sibling].parent;
-    unsigned int newParent = allocateNode();
+    unsigned int newParent = allocate_node();
     m_nodes[newParent].parent = oldParent;
     m_nodes[newParent].bb.merge(leafAABB, m_nodes[sibling].bb);
     m_nodes[newParent].height = m_nodes[sibling].height + 1;
@@ -1112,7 +1062,7 @@ class tree {
   /*! \param leaf
           The index of the leaf node.
    */
-  void removeLeaf(unsigned int leaf)
+  void remove_leaf(unsigned int leaf)
   {
     if (leaf == m_root) {
       m_root = NULL_NODE;
@@ -1136,7 +1086,7 @@ class tree {
         m_nodes[grandParent].right = sibling;
 
       m_nodes[sibling].parent = grandParent;
-      freeNode(parent);
+      free_node(parent);
 
       // Adjust ancestor bounds.
       unsigned int index = grandParent;
@@ -1156,7 +1106,7 @@ class tree {
     else {
       m_root = sibling;
       m_nodes[sibling].parent = NULL_NODE;
-      freeNode(parent);
+      free_node(parent);
     }
   }
 
@@ -1294,7 +1244,7 @@ class tree {
   /*! \return
           The height of the entire tree.
    */
-  unsigned int computeHeight() const { return computeHeight(m_root); }
+  unsigned int compute_height() const { return compute_height(m_root); }
 
   //! Compute the height of a sub-tree.
   /*! \param node
@@ -1303,7 +1253,7 @@ class tree {
       \return
           The height of the sub-tree.
    */
-  unsigned int computeHeight(unsigned int node) const
+  unsigned int compute_height(unsigned int node) const
   {
     assert(node < m_node_capacity);
 
@@ -1320,7 +1270,7 @@ class tree {
   /*! \param node
           The index of the root node.
    */
-  void validateStructure(unsigned int node) const
+  void validate_structure(unsigned int node) const
   {
     if (node == NULL_NODE)
       return;
@@ -1344,15 +1294,15 @@ class tree {
     assert(m_nodes[left].parent == node);
     assert(m_nodes[right].parent == node);
 
-    validateStructure(left);
-    validateStructure(right);
+    validate_structure(left);
+    validate_structure(right);
   }
 
   //! Assert that the sub-tree has valid metrics.
   /*! \param node
           The index of the root node.
    */
-  void validateMetrics(unsigned int node) const
+  void validate_metrics(unsigned int node) const
   {
     if (node == NULL_NODE)
       return;
@@ -1384,15 +1334,15 @@ class tree {
       assert(aabb.upperBound[i] == m_nodes[node].bb.upperBound[i]);
     }
 
-    validateMetrics(left);
-    validateMetrics(right);
+    validate_metrics(left);
+    validate_metrics(right);
   }
 
   //! Apply periodic boundary conditions.
   /* \param position
           The position vector.
    */
-  void periodicBoundaries(vec<double> &position)
+  void periodic_boundaries(vec<double> &position)
   {
     for (unsigned int i = 0; i < Dim; i++) {
       if (position[i] < 0) {
@@ -1416,7 +1366,7 @@ class tree {
       \return
           Whether a periodic shift has been applied.
    */
-  bool minimumImage(vec<double> &separation, vec<double> &shift) const
+  bool minimum_image(vec<double> &separation, vec<double> &shift) const
   {
     bool isShifted = false;
 
