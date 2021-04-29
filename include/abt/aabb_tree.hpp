@@ -512,7 +512,7 @@ class tree {
   }
 
   /// Remove all entrys from the tree.
-  void removeAll()
+  void clear()
   {
     // Iterator pointing to the start of the entry map.
     std::unordered_map<unsigned int, unsigned int>::iterator it =
