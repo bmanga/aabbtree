@@ -20,9 +20,9 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
+#include <chrono>
 #include <fstream>
 #include <iostream>
-#include <chrono>
 
 #include "MersenneTwister.h"
 #include "abt/aabb_tree.hpp"
@@ -31,8 +31,8 @@
 #define M_PI 3.1415926535897932384626433832795
 #endif
 
-  template <class T>
-  using vec = abt::tree<2>::vec<T>;
+template <class T>
+using vec = abt::tree<2>::vec<T>;
 
 /*! \file hard_disc.cpp
 
@@ -51,9 +51,7 @@ bool overlaps(abt::point<2> &,
               double);
 
 // Compute the minimum image separation vector.
-void minimumImage(vec<double> &,
-                  const vec<bool> &,
-                  const vec<double> &);
+void minimumImage(vec<double> &, const vec<bool> &, const vec<double> &);
 
 // Apply periodic boundary conditions.
 void periodicBoundaries(abt::point<2> &,
@@ -127,10 +125,10 @@ int main(int argc, char **argv)
   abt::tree<2> treeLarge(maxDisp, periodicity, boxSize, nLarge);
 
   // Initialise particle position vectors.
-  std::vector<abt::point<2>> positionsSmall(
-      nSmall, abt::point<2>(boxSize.size()));
-  std::vector<abt::point<2>> positionsLarge(
-      nLarge, abt::point<2>(boxSize.size()));
+  std::vector<abt::point<2>> positionsSmall(nSmall,
+                                            abt::point<2>(boxSize.size()));
+  std::vector<abt::point<2>> positionsLarge(nLarge,
+                                            abt::point<2>(boxSize.size()));
 
   /*****************************************************************/
   /*             Generate the initial AABB trees.                  */
@@ -162,10 +160,10 @@ int main(int argc, char **argv)
         position[1] = boxSize[1] * rng();
 
         // Compute lower and upper AABB bounds.
-        abt::point<2> lowerBound
-            {position[0] - radiusLarge, position[1] - radiusLarge};
-        abt::point<2> upperBound
-            {position[0] + radiusLarge, position[1] + radiusLarge};
+        abt::point<2> lowerBound{position[0] - radiusLarge,
+                                 position[1] - radiusLarge};
+        abt::point<2> upperBound{position[0] + radiusLarge,
+                                 position[1] + radiusLarge};
 
         // Generate the AABB.
         abt::aabb<2> aabb(lowerBound, upperBound);
@@ -193,7 +191,7 @@ int main(int argc, char **argv)
     }
 
     // Insert the particle into the tree.
-    treeLarge.insert(i, position, radiusLarge);
+    treeLarge.insert(i, abt::aabb2d::of_sphere(position, radiusLarge));
 
     // Store the position.
     positionsLarge[i] = position;
@@ -270,7 +268,7 @@ int main(int argc, char **argv)
     }
 
     // Insert particle into tree.
-    treeSmall.insert(i, position, radiusSmall);
+    treeSmall.insert(i, abt::aabb2d::of_sphere(position, radiusSmall));
 
     // Store the position.
     positionsSmall[i] = position;
@@ -387,11 +385,11 @@ int main(int argc, char **argv)
           // Update the position and AABB tree.
           if (particleType == 0) {
             positionsSmall[particle] = position;
-            treeSmall.update(particle, lowerBound, upperBound);
+            treeSmall.update(particle, {lowerBound, upperBound});
           }
           else {
             positionsLarge[particle] = position;
-            treeLarge.update(particle, lowerBound, upperBound);
+            treeLarge.update(particle, {lowerBound, upperBound});
           }
         }
       }
@@ -420,7 +418,9 @@ int main(int argc, char **argv)
 
   auto end = clk::now();
   auto elapsed_s =
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.;
+      std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+          .count() /
+      1000.;
   std::cout << "Done! Time elapsed: " << elapsed_s << "s\n";
 
   return (EXIT_SUCCESS);

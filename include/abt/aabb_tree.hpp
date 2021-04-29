@@ -98,6 +98,16 @@ class aabb {
     centre = computeCentre();
   }
 
+  static aabb of_sphere(const point &center, value_type radius)
+  {
+    point lb, ub;
+    for (unsigned int i = 0; i < Dim; i++) {
+      lb[i] = center[i] - radius;
+      ub[i] = center[i] + radius;
+    }
+    return {lb, ub};
+  }
+
   /// Compute the surface area of the box.
   value_type computeSurfaceArea() const
   {
@@ -423,61 +433,6 @@ class tree {
    */
   void setBoxSize(const vec<double> &box_size) { m_box_size = box_size; }
 
-  //! Insert a entry into the tree (point entry).
-  /*! \param index
-          The index of the entry.
-
-      \param position
-          The position vector of the entry.
-
-      \param radius
-          The radius of the entry.
-   */
-  void insert(unsigned int id,
-                      const point &position,
-                      double radius)
-  {
-    // Make sure the entry doesn't already exist.
-    if (m_id_map.count(id) != 0) {
-      throw std::invalid_argument("[ERROR]: entry already exists in tree!");
-    }
-
-    // Allocate a new node for the entry.
-    unsigned int node = allocateNode();
-
-    // AABB size in each dimension.
-    vec<double> size;
-
-    // Compute the AABB limits.
-    for (unsigned int i = 0; i < Dim; i++) {
-      m_nodes[node].bb.lowerBound[i] = position[i] - radius;
-      m_nodes[node].bb.upperBound[i] = position[i] + radius;
-      size[i] = m_nodes[node].bb.upperBound[i] - m_nodes[node].bb.lowerBound[i];
-    }
-
-    // Fatten the AABB.
-    for (unsigned int i = 0; i < Dim; i++) {
-      m_nodes[node].bb.lowerBound[i] -= m_skin_thickness * size[i];
-      m_nodes[node].bb.upperBound[i] += m_skin_thickness * size[i];
-    }
-    m_nodes[node].bb.surfaceArea = m_nodes[node].bb.computeSurfaceArea();
-    m_nodes[node].bb.centre = m_nodes[node].bb.computeCentre();
-
-    // Zero the height.
-    m_nodes[node].height = 0;
-
-    // Insert a new leaf into the tree.
-    insertLeaf(node);
-
-    // Add the new entry to the map.
-    m_id_map.insert(
-        std::unordered_map<unsigned int, unsigned int>::value_type(id,
-                                                                   node));
-
-    // Store the entry index.
-    m_nodes[node].id = id;
-  }
-
   //! Insert a entry into the tree (arbitrary shape with bounding box).
   /*! \param index
           The index of the entry.
@@ -488,9 +443,7 @@ class tree {
       \param upperBound
           The upper bound in each dimension.
    */
-  void insert(unsigned int id,
-                      const point &lower_bound,
-                      const point &upper_bound)
+  void insert(unsigned int id, const aabb &bb)
   {
     // Make sure the entry doesn't already exist.
     if (m_id_map.count(id) != 0) {
@@ -498,44 +451,31 @@ class tree {
     }
 
     // Allocate a new node for the entry.
-    unsigned int node = allocateNode();
+    unsigned int node_idx = allocateNode();
+    auto &node = m_nodes[node_idx];
 
-    // AABB size in each dimension.
-    vec<double> size;
-
-    // Compute the AABB limits.
-    for (unsigned int i = 0; i < Dim; i++) {
-      // Validate the bound.
-      if (lower_bound[i] > upper_bound[i]) {
-        throw std::invalid_argument(
-            "[ERROR]: AABB lower bound is greater than the upper bound!");
-      }
-
-      m_nodes[node].bb.lowerBound[i] = lower_bound[i];
-      m_nodes[node].bb.upperBound[i] = upper_bound[i];
-      size[i] = upper_bound[i] - lower_bound[i];
-    }
+    node.bb = bb;
 
     // Fatten the AABB.
     for (unsigned int i = 0; i < Dim; i++) {
-      m_nodes[node].bb.lowerBound[i] -= m_skin_thickness * size[i];
-      m_nodes[node].bb.upperBound[i] += m_skin_thickness * size[i];
+      auto sz = bb.upperBound[i] - bb.lowerBound[i];
+      node.bb.lowerBound[i] -= m_skin_thickness * sz;
+      node.bb.upperBound[i] += m_skin_thickness * sz;
     }
-    m_nodes[node].bb.surfaceArea = m_nodes[node].bb.computeSurfaceArea();
-    m_nodes[node].bb.centre = m_nodes[node].bb.computeCentre();
+    node.bb.surfaceArea = node.bb.computeSurfaceArea();
+    node.bb.centre = node.bb.computeCentre();
 
     // Zero the height.
-    m_nodes[node].height = 0;
+    node.height = 0;
 
     // Insert a new leaf into the tree.
-    insertLeaf(node);
+    insertLeaf(node_idx);
 
     // Add the new entry to the map.
-    m_id_map.insert(
-        std::unordered_map<unsigned int, unsigned int>::value_type(id,
-                                                                   node));
+    m_id_map.insert(std::unordered_map<unsigned int, unsigned int>::value_type(
+        id, node_idx));
 
-    m_nodes[node].id = id;
+    node.id = id;
   }
 
   /// Return the number of entrys in the tree.
@@ -646,10 +586,7 @@ class tree {
           Always reinsert the entry, even if it's within its old AABB
      (default: false)
    */
-  bool update(unsigned int id,
-              const point &lower_bound,
-              const point &upper_bound,
-              bool always_reinsert = false)
+  bool update(unsigned int id, aabb bb, bool always_reinsert = false)
   {
     // Map iterator.
     std::unordered_map<unsigned int, unsigned int>::iterator it;
@@ -663,50 +600,35 @@ class tree {
     }
 
     // Extract the node index.
-    unsigned int node = it->second;
+    unsigned int node_idx = it->second;
+    auto &node = m_nodes[node_idx];
 
-    assert(node < m_node_capacity);
-    assert(m_nodes[node].isLeaf());
-
-    // AABB size in each dimension.
-    vec<double> size;
-
-    // Compute the AABB limits.
-    for (unsigned int i = 0; i < Dim; i++) {
-      // Validate the bound.
-      if (lower_bound[i] > upper_bound[i]) {
-        throw std::invalid_argument(
-            "[ERROR]: AABB lower bound is greater than the upper bound!");
-      }
-
-      size[i] = upper_bound[i] - lower_bound[i];
-    }
-
-    // Create the new AABB.
-    aabb aabb(lower_bound, upper_bound);
+    assert(node_idx < m_node_capacity);
+    assert(node.isLeaf());
 
     // No need to update if the entry is still within its fattened AABB.
-    if (!always_reinsert && m_nodes[node].bb.contains(aabb))
+    if (!always_reinsert && node.bb.contains(bb))
       return false;
 
     // Remove the current leaf.
-    removeLeaf(node);
+    removeLeaf(node_idx);
 
     // Fatten the new AABB.
     for (unsigned int i = 0; i < Dim; i++) {
-      aabb.lowerBound[i] -= m_skin_thickness * size[i];
-      aabb.upperBound[i] += m_skin_thickness * size[i];
+      auto sz = bb.upperBound[i] - bb.lowerBound[i];
+      bb.lowerBound[i] -= m_skin_thickness * sz;
+      bb.upperBound[i] += m_skin_thickness * sz;
     }
 
     // Assign the new AABB.
-    m_nodes[node].bb = aabb;
+    node.bb = bb;
 
     // Update the surface area and centroid.
-    m_nodes[node].bb.surfaceArea = m_nodes[node].bb.computeSurfaceArea();
-    m_nodes[node].bb.centre = m_nodes[node].bb.computeCentre();
+    node.bb.surfaceArea = node.bb.computeSurfaceArea();
+    node.bb.centre = node.bb.computeCentre();
 
     // Insert a new leaf node.
-    insertLeaf(node);
+    insertLeaf(node_idx);
 
     return true;
   }
@@ -742,10 +664,7 @@ class tree {
   {
     std::vector<unsigned int> overlaps;
     visit_overlaps(
-        query,
-        [&](unsigned int id, const aabb &bb) {
-          overlaps.push_back(id);
-        },
+        query, [&](unsigned int id, const aabb &bb) { overlaps.push_back(id); },
         include_touch);
     return overlaps;
   }
