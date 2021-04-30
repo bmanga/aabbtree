@@ -63,7 +63,7 @@ struct point {
   value_type &operator[](size_t idx) { return values[idx]; }
   const value_type &operator[](size_t idx) const { return values[idx]; }
 
-  std::array<value_type, Dim> values;
+  std::array<value_type, Dim> values = {};
 };
 /*! \brief The axis-aligned bounding box object.
 
@@ -453,7 +453,7 @@ class tree {
     // Allocate a new node for the entry.
     unsigned int node_idx = allocate_node();
     auto &node = m_nodes[node_idx];
-
+    node.id = id;
     node.bb = bb;
 
     // Fatten the AABB.
@@ -474,8 +474,6 @@ class tree {
     // Add the new entry to the map.
     m_id_map.insert(std::unordered_map<unsigned int, unsigned int>::value_type(
         id, node_idx));
-
-    node.id = id;
   }
 
   /// Return the number of entrys in the tree.
