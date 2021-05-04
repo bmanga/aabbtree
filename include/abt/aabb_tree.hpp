@@ -54,9 +54,13 @@ struct point {
 
   bool operator==(const point &other) const { return values == other.values; }
 
-  value_type x() { return values[0]; }
-  value_type y() { return values[1]; }
-  value_type z() { return values[2]; }
+  const value_type &x() const { return values[0]; }
+  const value_type &y() const { return values[1]; }
+  const value_type &z() const { return values[2]; }
+
+  value_type &x() { return values[0]; }
+  value_type &y() { return values[1]; }
+  value_type &z() { return values[2]; }
 
   constexpr size_t size() const { return Dim; }
 
