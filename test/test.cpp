@@ -75,6 +75,11 @@ TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, short)
   intersections = t.get_overlaps(point{1, 1}, false);
   REQUIRE(intersections.size() == 1);
 
+  REQUIRE(t.any_overlap(point{1, 1}, [] { return true; }));
+  REQUIRE(t.any_overlap(point{1, 1}, [] (unsigned) { return true; }));
+  REQUIRE(t.any_overlap(point{1, 1}, [] (aabb) { return true; }));
+  REQUIRE(t.any_overlap(point{1, 1}, [](unsigned, aabb) { return true; }));
+
   t.clear();
   REQUIRE(t.size() == 0);
   t.insert({{2, 2}, {4, 4}});

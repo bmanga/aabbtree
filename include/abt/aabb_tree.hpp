@@ -584,27 +584,13 @@ class tree {
   bool any_overlap(const Query &query, Fn &&fn, bool include_touch = true,
                    const vec<ValTy> &bounds = {}) const
   {
-    constexpr bool fn_with_bb = std::is_invocable_v<Fn, unsigned, aabb>;
-    static_assert(std::is_invocable_v<Fn, unsigned int> || fn_with_bb,
-                  "Wrong function signature");
     bool overlap = false;
-    if constexpr (fn_with_bb) {
-      auto wrap_fn = [&overlap, &fn](unsigned int id, const aabb &bb) {
-        bool success = std::forward<Fn>(fn)(id, bb);
-        overlap |= success;
-        return success ? visit_stop : visit_continue;
-      };
-      visit_overlaps(query, wrap_fn, include_touch, bounds);
-    }
-    else {
-      auto wrap_fn = [&overlap, &fn](unsigned int id) {
-        bool success = std::forward<Fn>(fn)(id);
-        overlap |= success;
-        return success ? visit_stop : visit_continue;
-      };
-      visit_overlaps(query, wrap_fn, include_touch, bounds);
-    }
-
+    auto wrap_fn = [&overlap, &fn](unsigned int id, const aabb &bb) {
+      bool success = call_with_args(std::forward<Fn>(fn), id, bb);
+      overlap |= success;
+      return success ? visit_stop : visit_continue;
+    };
+    visit_overlaps(query, wrap_fn, include_touch, bounds);
     return overlap;
   }
 
@@ -614,7 +600,7 @@ class tree {
     for (auto idx = 0ull; idx < m_nodes.size(); ++idx) {
       const auto &node = m_nodes[idx];
       if (node.isLeaf()) {
-        std::forward<Fn>(fn)(idx, node.bb);
+        call_with_args(std::forward<Fn>(fn), idx, node.bb);
       }
     }
   }
@@ -640,9 +626,9 @@ class tree {
     constexpr bool query_is_aabb = std::is_same_v<Query, aabb>;
     static_assert(query_is_point || query_is_aabb,
                   "Only point or aabb queries are supported");
-    constexpr bool fn_with_bb = std::is_invocable_v<Fn, unsigned, aabb>;
 
-    using rt = decltype(get_return_type<fn_with_bb>(std::forward<Fn>(fn)));
+
+    using rt = decltype(call_with_args(std::forward<Fn>(fn), 0, aabb{}));
     constexpr bool fn_returns_action = std::is_convertible_v<rt, visit_action>;
     static_assert(fn_returns_action || std::is_same_v<rt, void>,
                   "Only void or visit_action return types are allowed");
@@ -688,24 +674,12 @@ class tree {
         if (m_nodes[node].isLeaf()) {
           const auto &n = m_nodes[node];
           if constexpr (fn_returns_action) {
-            visit_action visit_act;
-            if constexpr (fn_with_bb) {
-              visit_act = std::forward<Fn>(fn)(node, n.bb);
-            }
-            else {
-              visit_act = std::forward<Fn>(fn)(node);
-            }
-            if (visit_act == visit_stop) {
+            if (call_with_args(std::forward<Fn>(fn), node, n.bb) == visit_stop) {
               return;
             }
           }
           else {
-            if constexpr (fn_with_bb) {
-              std::forward<Fn>(fn)(node, n.bb);
-            }
-            else {
-              std::forward<Fn>(fn)(node);
-            }
+            call_with_args(std::forward<Fn>(fn), node, n.bb);
           }
         }
         else {
@@ -838,14 +812,27 @@ class tree {
   unsigned int m_free_list;
 
  private:
-  template <bool with_aabb, class Fn>
-  static decltype(auto) get_return_type(Fn &&fn)
+  template <class Fn>
+  static decltype(auto) call_with_args(Fn &&fn, unsigned id, const aabb &bb)
   {
-    if constexpr (with_aabb) {
-      return std::forward<Fn>(fn)(0, aabb());
+    constexpr bool call_id_bb = std::is_invocable_v<Fn, unsigned, aabb>;
+    constexpr bool call_id = std::is_invocable_v<Fn, unsigned>;
+    constexpr bool call_bb = std::is_invocable_v<Fn, aabb>;
+    constexpr bool call_none = std::is_invocable_v<Fn>;
+
+    static_assert(call_id_bb || call_id || call_bb || call_none,
+                  "Callback has unsupported signature");
+    if constexpr (call_id_bb) {
+      return std::forward<Fn>(fn)(id, bb);
+    }
+    else if constexpr (call_id) {
+      return std::forward<Fn>(fn)(id);
+    }
+    else if constexpr (call_bb) {
+      return std::forward<Fn>(fn)(bb);
     }
     else {
-      return std::forward<Fn>(fn)(0);
+      return std::forward<Fn>(fn)();
     }
   }
   //! Allocate a new node.
