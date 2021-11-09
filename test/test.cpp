@@ -74,4 +74,9 @@ TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, short)
   REQUIRE(t.any_overlap(point{1, 1}));
   intersections = t.get_overlaps(point{1, 1}, false);
   REQUIRE(intersections.size() == 1);
+
+  t.clear();
+  REQUIRE(t.size() == 0);
+  t.insert({{2, 2}, {4, 4}});
+  REQUIRE(t.size() == 1);
 }
