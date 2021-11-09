@@ -80,3 +80,27 @@ TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, short)
   t.insert({{2, 2}, {4, 4}});
   REQUIRE(t.size() == 1);
 }
+
+TEST_CASE_TEMPLATE("periodic tree 2d", T, double, float, int, short) {
+  using tree = tree<2, T>;
+  using aabb = tree::aabb;
+  using point = tree::point;
+
+  tree t({true, true}, {10, 10});
+  t.insert({{0, 0}, {2, 2}});
+  t.insert({{1, 1}, {3, 3}});
+  t.insert({{2, 2}, {4, 4}});
+  t.insert({{5, 5}, {7, 7}});
+
+  auto intersections = t.get_overlaps(point{10, 1});
+  REQUIRE(intersections.size() == 1);
+
+  intersections = t.get_overlaps(point{10, 11});
+  REQUIRE(intersections.size() == 1);
+
+  intersections = t.get_overlaps(point{11, 1});
+  REQUIRE(intersections.size() == 2);
+
+  intersections = t.get_overlaps(point{11, 11});
+  REQUIRE(intersections.size() == 2);
+}

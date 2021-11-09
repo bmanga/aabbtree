@@ -86,6 +86,21 @@ struct point {
     return res;
   }
 
+  friend point<Dim, ValTy> operator-(const point<Dim, ValTy> &a,
+                                     const std::array<ValTy, Dim> &b)
+  {
+    point<Dim, ValTy> res;
+    for (auto d = 0; d < Dim; ++d) {
+      res[d] = a[d] - b[d];
+    }
+    return res;
+  }
+
+  point& operator-=(const std::array<ValTy, Dim>& rhs) {
+    *this = *this - rhs;
+    return *this;
+  }
+
   constexpr size_t size() const { return Dim; }
 
   value_type &operator[](size_t idx) { return values[idx]; }
@@ -290,6 +305,13 @@ class aabb {
 
   /// The AABB's surface area.
   value_type surfaceArea = 0;
+
+  friend aabb<Dim, ValTy> operator-(const aabb<Dim, ValTy>& lhs, const std::array<ValTy, Dim>& rhs) {
+    auto res = lhs;
+    res.lowerBound -= rhs;
+    res.upperBound -= rhs;
+    return res;
+  }
 };
 
 template <unsigned Dim, typename ValTy = double>
@@ -373,11 +395,9 @@ class tree {
           The skin thickness for fattened AABBs, as a fraction
           of the AABB base length.
 
-      \param nentrys
-          The number of entrys (for fixed entry number systems).
+      \param initial_size
+          The number of entries (for fixed entry number systems).
 
-      \param touchIsOverlap
-          Does touching count as overlapping in query operations?
    */
   tree(unsigned int initial_size = 16) : m_is_periodic(false)
   {
@@ -411,9 +431,6 @@ class tree {
 
       \param nentrys
           The number of entrys (for fixed entry number systems).
-
-      \param touchIsOverlap
-          Does touching count as overlapping in query operations?
    */
   tree(const vec<bool> &periodicity,
        const vec<double> &boxSize,
@@ -508,7 +525,7 @@ class tree {
   /// Remove all entrys from the tree.
   void clear()
   {
-    for_each([](unsigned id, const auto &) { remove(id); });
+    for_each([this](unsigned id, const auto &) { remove(id); });
   }
 
   //! Update the tree if a entry moves outside its fattened AABB.
@@ -681,14 +698,15 @@ class tree {
       stack.pop_back();
 
       // Copy the AABB.
-      auto nodeAABB = m_nodes[node].bb;
+      const auto &nodeAABB = m_nodes[node].bb;
 
+      auto shifted_query = query;
       if (node == NULL_NODE)
         continue;
 
       if (m_is_periodic) {
-        vec<double> separation;
-        vec<double> shift;
+        vec<ValTy> separation = {};
+        vec<ValTy> shift = {};
         point center;
         if constexpr (query_is_point) {
           center = query;
@@ -703,15 +721,12 @@ class tree {
 
         // Shift the AABB.
         if (isShifted) {
-          for (unsigned int i = 0; i < Dim; i++) {
-            nodeAABB.lowerBound[i] += shift[i];
-            nodeAABB.upperBound[i] += shift[i];
-          }
+          shifted_query = shifted_query - shift;
         }
       }
 
       // Test for overlap between the AABBs.
-      if (nodeAABB.overlaps(query, include_touch)) {
+      if (nodeAABB.overlaps(shifted_query, include_touch)) {
         // Check that we're at a leaf node.
         if (m_nodes[node].isLeaf()) {
           const auto &n = m_nodes[node];
@@ -1378,7 +1393,7 @@ class tree {
       \return
           Whether a periodic shift has been applied.
    */
-  bool minimum_image(vec<double> &separation, vec<double> &shift) const
+  bool minimum_image(vec<ValTy> &separation, vec<ValTy> &shift) const
   {
     bool isShifted = false;
 
