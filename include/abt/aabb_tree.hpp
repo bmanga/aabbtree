@@ -36,6 +36,8 @@
 #include <limits>
 
 #include <unordered_map>
+#include <span>
+#include <numeric>
 
 //#define vector moo
 
@@ -399,16 +401,16 @@ class tree {
     aabb bb;
 
     /// Index of the parent node.
-    unsigned int parent = 0;
+    unsigned int parent = NULL_NODE;
 
     /// Index of the next node.
     unsigned int next = 0;
 
     /// Index of the left-hand child.
-    unsigned int left = 0;
+    unsigned int left = NULL_NODE;
 
     /// Index of the right-hand child.
-    unsigned int right = 0;
+    unsigned int right = NULL_NODE;
 
     /// Height of the node. This is 0 for a leaf and -1 for a free node.
     int height = 0;
@@ -448,6 +450,80 @@ class tree {
 
     // Assign the index of the first free node.
     m_free_list = 0;
+  }
+
+  /// Build an optimal tree.
+  tree(std::span<aabb> bbs)
+  {
+    auto count = bbs.size();
+
+    m_root = NULL_NODE;
+    m_node_count = count;
+    m_leaf_count = count;
+    m_node_capacity = count * 2;
+    m_nodes.resize(m_node_capacity);
+
+    // Build a linked list for the list of free nodes.
+    for (unsigned int i = count; i < m_node_capacity - 1; i++) {
+      m_nodes[i].next = i + 1;
+      m_nodes[i].height = -1;
+    }
+    m_nodes[m_node_capacity - 1].next = NULL_NODE;
+    m_nodes[m_node_capacity - 1].height = -1;
+
+    // Assign the index of the first free node.
+    m_free_list = count;
+
+    std::vector<unsigned int> node_indices(count);
+    std::iota(node_indices.begin(), node_indices.end(), 0);
+
+    for (unsigned i = 0; i < count; ++i) {
+      m_nodes[i].bb = bbs[i];
+    }
+
+    while (count > 1) {
+      double minCost = std::numeric_limits<double>::max();
+      int iMin = -1, jMin = -1;
+
+      for (unsigned int i = 0; i < count; i++) {
+        aabb aabbi = m_nodes[node_indices[i]].bb;
+
+        for (unsigned int j = i + 1; j < count; j++) {
+          aabb aabbj = m_nodes[node_indices[j]].bb;
+          aabb aabb;
+          aabb.merge(aabbi, aabbj);
+          double cost = aabb.get_surface_area();
+
+          if (cost < minCost) {
+            iMin = i;
+            jMin = j;
+            minCost = cost;
+          }
+        }
+      }
+
+      unsigned int index1 = node_indices[iMin];
+      unsigned int index2 = node_indices[jMin];
+
+      unsigned int parent = allocate_node();
+      m_nodes[parent].left = index1;
+      m_nodes[parent].right = index2;
+      m_nodes[parent].height =
+          1 + std::max(m_nodes[index1].height, m_nodes[index2].height);
+      m_nodes[parent].bb.merge(m_nodes[index1].bb, m_nodes[index2].bb);
+      m_nodes[parent].parent = NULL_NODE;
+
+      m_nodes[index1].parent = parent;
+      m_nodes[index2].parent = parent;
+
+      node_indices[jMin] = node_indices[count - 1];
+      node_indices[iMin] = parent;
+      count--;
+    }
+
+    m_root = node_indices[0];
+
+    validate();
   }
 
   //! Insert a entry into the tree (arbitrary shape with bounding box).
@@ -1216,8 +1292,8 @@ class tree {
     if (m_nodes[node].isLeaf())
       return 0;
 
-    unsigned int height1 = computeHeight(m_nodes[node].left);
-    unsigned int height2 = computeHeight(m_nodes[node].right);
+    unsigned int height1 = compute_height(m_nodes[node].left);
+    unsigned int height2 = compute_height(m_nodes[node].right);
 
     return 1 + std::max(height1, height2);
   }

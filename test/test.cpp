@@ -91,7 +91,7 @@ TEST_CASE_TEMPLATE("periodic tree 2d", T, double, float, int, short) {
   using aabb = tree::aabb;
   using point = tree::point;
 
-  tree::vec<T> bounds = {10, 10};
+  std::array<T, 2> bounds = {10, 10};
 
   tree t;
   t.insert({{0, 0}, {2, 2}});
@@ -110,4 +110,37 @@ TEST_CASE_TEMPLATE("periodic tree 2d", T, double, float, int, short) {
 
   intersections = t.get_overlaps(point{11, 11}, true, bounds);
   REQUIRE(intersections.size() == 2);
+}
+
+TEST_CASE_TEMPLATE("optimal tree 2d", T, double, float, int, short)
+{
+  using tree = tree<2, T>;
+  using aabb = tree::aabb;
+  using point = tree::point;
+
+  std::array<aabb, 4> bbs = {
+      {{{0, 0}, {2, 2}}, {{1, 1}, {3, 3}}, {{2, 2}, {4, 4}}, {{5, 5}, {7, 7}}}};
+
+  tree t(bbs);
+  REQUIRE(t.size() == 4);
+  auto intersections = t.get_overlaps(aabb{{1, 1}, {2, 2}});
+  REQUIRE(intersections.size() == 3);
+  REQUIRE(t.any_overlap(aabb{{1, 1}, {2, 2}}));
+  intersections = t.get_overlaps(aabb{{1, 1}, {2, 2}}, false);
+  REQUIRE(intersections.size() == 2);
+  intersections = t.get_overlaps(point{1, 1});
+  REQUIRE(intersections.size() == 2);
+  REQUIRE(t.any_overlap(point{1, 1}));
+  intersections = t.get_overlaps(point{1, 1}, false);
+  REQUIRE(intersections.size() == 1);
+
+  REQUIRE(t.any_overlap(point{1, 1}, [] { return true; }));
+  REQUIRE(t.any_overlap(point{1, 1}, [](unsigned) { return true; }));
+  REQUIRE(t.any_overlap(point{1, 1}, [](aabb) { return true; }));
+  REQUIRE(t.any_overlap(point{1, 1}, [](unsigned, aabb) { return true; }));
+
+  t.clear();
+  REQUIRE(t.size() == 0);
+  t.insert({{2, 2}, {4, 4}});
+  REQUIRE(t.size() == 1);
 }
