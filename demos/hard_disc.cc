@@ -20,19 +20,19 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
-#include <chrono>
 #include <fstream>
 #include <iostream>
 
-#include "MersenneTwister.h"
 #include "abt/aabb_tree.hpp"
+#include "MersenneTwister.h"
 
 #ifndef M_PI
 #define M_PI 3.1415926535897932384626433832795
 #endif
 
+using namespace abt;
 template <class T>
-using vec = abt::tree<2>::vec<T>;
+using vec = abt::tree2d::vec<T>;
 
 /*! \file hard_disc.cpp
 
@@ -41,34 +41,82 @@ using vec = abt::tree<2>::vec<T>;
   between the particle species.
 */
 
-// FUNCTION PROTOTYPES
+// FUNCTION DEFINITIONS
+void minimumImage(vec<double> &separation,
+                  const vec<bool> &periodicity,
+                  const vec<double> &boxSize)
+{
+  for (unsigned int i = 0; i < 2; i++) {
+    if (separation[i] < -0.5 * boxSize[i]) {
+      separation[i] += periodicity[i] * boxSize[i];
+    }
+    else {
+      if (separation[i] >= 0.5 * boxSize[i]) {
+        separation[i] -= periodicity[i] * boxSize[i];
+      }
+    }
+  }
+}
 
-// Test whether two particles overlap.
-bool overlaps(abt::point<2> &,
-              abt::point<2> &,
-              const vec<bool> &,
-              const vec<double> &,
-              double);
+bool overlaps(const point2d &position1,
+              const point2d &position2,
+              const vec<bool> &periodicity,
+              const vec<double> &boxSize,
+              double cutOff)
+{
+  // Calculate particle separation.
+  vec<double> separation;
+  separation[0] = (position1[0] - position2[0]);
+  separation[1] = (position1[1] - position2[1]);
 
-// Compute the minimum image separation vector.
-void minimumImage(vec<double> &, const vec<bool> &, const vec<double> &);
+  // Calculate minimum image separation.
+  minimumImage(separation, periodicity, boxSize);
 
-// Apply periodic boundary conditions.
-void periodicBoundaries(abt::point<2> &,
-                        const vec<bool> &,
-                        const vec<double> &);
+  double rSqd = separation[0] * separation[0] + separation[1] * separation[1];
 
-// Append a particle configuration to a VMD xyz file.
-void printVMD(const std::string &,
-              const std::vector<abt::point<2>> &,
-              const std::vector<abt::point<2>> &);
+  if (rSqd < cutOff)
+    return true;
+  else
+    return false;
+}
+
+void periodicBoundaries(point2d &position,
+                        const vec<bool> &periodicity,
+                        const vec<double> &boxSize)
+{
+  for (unsigned int i = 0; i < 2; i++) {
+    if (position[i] < 0) {
+      position[i] += periodicity[i] * boxSize[i];
+    }
+    else {
+      if (position[i] >= boxSize[i]) {
+        position[i] -= periodicity[i] * boxSize[i];
+      }
+    }
+  }
+}
+
+void printVMD(const std::string &fileName,
+              const std::vector<point2d> &positionsSmall,
+              const std::vector<point2d> &positionsLarge)
+{
+  FILE *pFile;
+  pFile = fopen(fileName.c_str(), "a");
+
+  fprintf(pFile, "%lu\n\n", positionsSmall.size() + positionsLarge.size());
+  for (unsigned int i = 0; i < positionsSmall.size(); i++)
+    fprintf(pFile, "0 %lf %lf 0\n", positionsSmall[i][0], positionsSmall[i][1]);
+  for (unsigned int i = 0; i < positionsLarge.size(); i++)
+    fprintf(pFile, "1 %lf %lf 0\n", positionsLarge[i][0], positionsLarge[i][1]);
+
+  fclose(pFile);
+}
+
 
 // MAIN FUNCTION
 
 int main(int argc, char **argv)
 {
-  using clk = std::chrono::high_resolution_clock;
-  auto start = clk::now();
   // Print git commit info, if present.
 #ifdef COMMIT
   std::cout << "Git commit: " << COMMIT << "\n";
@@ -83,7 +131,7 @@ int main(int argc, char **argv)
   /*      Set parameters, initialise variables and objects.        */
   /*****************************************************************/
 
-  unsigned int nSweeps = 10000;       // The number of Monte Carlo sweeps.
+  unsigned int nSweeps = 100000;      // The number of Monte Carlo sweeps.
   unsigned int sampleInterval = 100;  // The number of sweeps per sample.
   unsigned int nSmall = 1000;         // The number of small particles.
   unsigned int nLarge = 100;          // The number of large particles.
@@ -106,7 +154,6 @@ int main(int argc, char **argv)
   unsigned int format = std::floor(std::log10(nSamples));
 
   // Set the periodicity of the simulation box.
-
   vec<bool> periodicity({true, true});
 
   // Work out base length of simulation box.
@@ -117,19 +164,16 @@ int main(int argc, char **argv)
   vec<double> boxSize({baseLength, baseLength});
 
   // Initialise the random number generator.
-  // Make it deterministic to compare across runs.
-  MersenneTwister rng(0);
+  MersenneTwister rng;
 
   // Initialise the AABB trees.
-  abt::tree<2> treeSmall(maxDisp, periodicity, boxSize, nSmall);
-  abt::tree<2> treeLarge(maxDisp, periodicity, boxSize, nLarge);
+  abt::tree<2, double> treeSmall(periodicity, boxSize, nSmall);
+  abt::tree<2, double> treeLarge(periodicity, boxSize, nLarge);
 
-  // Initialise particle position vectors.
-  std::vector<abt::point<2>> positionsSmall(nSmall,
-                                            abt::point<2>(boxSize.size()));
-  std::vector<abt::point<2>> positionsLarge(nLarge,
-                                            abt::point<2>(boxSize.size()));
 
+    // Initialise particle position vectors.
+  std::unordered_map<unsigned, point2d> positionsSmall(nSmall);
+  std::unordered_map<unsigned, point2d> positionsLarge(nLarge);
   /*****************************************************************/
   /*             Generate the initial AABB trees.                  */
   /*****************************************************************/
@@ -139,62 +183,38 @@ int main(int argc, char **argv)
   std::cout << "\nInserting large particles into AABB tree ...\n";
   for (unsigned int i = 0; i < nLarge; i++) {
     // Initialise the particle position vector.
-    abt::point<2> position;
+    point2d position;
+    aabb2d aabb;
 
     // Insert the first particle directly.
     if (i == 0) {
       // Generate a random particle position.
       position[0] = boxSize[0] * rng();
       position[1] = boxSize[1] * rng();
+      aabb = fattened(aabb2d::of_sphere(position, radiusLarge), maxDisp);
     }
 
     // Check for overlaps.
     else {
-      // Initialise overlap flag.
-      bool isOverlap = true;
-
       // Keep trying until there is no overlap.
-      while (isOverlap) {
-        // Generate a random particle position.
+      do {
         position[0] = boxSize[0] * rng();
         position[1] = boxSize[1] * rng();
 
-        // Compute lower and upper AABB bounds.
-        abt::point<2> lowerBound{position[0] - radiusLarge,
-                                 position[1] - radiusLarge};
-        abt::point<2> upperBound{position[0] + radiusLarge,
-                                 position[1] + radiusLarge};
-
-        // Generate the AABB.
-        abt::aabb<2> aabb(lowerBound, upperBound);
-
-        // Query AABB overlaps.
-        std::vector<unsigned int> particles = treeLarge.get_overlaps(aabb);
-
-        // Flag as no overlap (yet).
-        isOverlap = false;
-
-        // Test overlap.
-        for (unsigned int j = 0; j < particles.size(); j++) {
+        aabb = fattened(abt::aabb2d::of_sphere(position, radiusLarge), maxDisp);
+      } while (treeLarge.any_overlap(
+        aabb, [&](unsigned id, const aabb2d& overlap) {
           // Cut-off distance.
           double cutOff = 2.0 * radiusLarge;
           cutOff *= cutOff;
 
           // Particles overlap.
-          if (overlaps(position, positionsLarge[particles[j]], periodicity,
-                       boxSize, cutOff)) {
-            isOverlap = true;
-            break;
-          }
-        }
-      }
+          return overlaps(position, overlap.centre, periodicity, boxSize, cutOff);
+        }));
     }
 
     // Insert the particle into the tree.
-    treeLarge.insert(i, abt::aabb2d::of_sphere(position, radiusLarge));
-
-    // Store the position.
-    positionsLarge[i] = position;
+    treeLarge.insert(aabb);
   }
   std::cout << "Tree generated!\n";
 
@@ -203,75 +223,38 @@ int main(int argc, char **argv)
   std::cout << "\nInserting small particles into AABB tree ...\n";
   for (unsigned int i = 0; i < nSmall; i++) {
     // Initialise the particle position vector.
-    abt::point<2> position;
+    point2d position;
+    aabb2d aabb;
 
-    // Initialise overlap flag.
-    bool isOverlap = true;
-
-    // Keep trying until there is no overlap.
-    while (isOverlap) {
-      // Generate a random particle position.
+    do {
       position[0] = boxSize[0] * rng();
       position[1] = boxSize[1] * rng();
+      aabb = fattened(aabb2d::of_sphere(position, radiusSmall), maxDisp);
+    } while (
+        treeLarge.any_overlap(aabb,
+                              [&](unsigned id, const aabb2d &overlap) {
+                                // Cut-off distance.
+                                double cutOff = radiusSmall + radiusLarge;
+                                cutOff *= cutOff;
 
-      // Compute lower and upper AABB bounds.
-      abt::point<2> lowerBound(
-          {position[0] - radiusSmall, position[1] - radiusSmall});
-      abt::point<2> upperBound(
-          {position[0] + radiusSmall, position[1] + radiusSmall});
+                                // Particles overlap.
+                                return overlaps(position, overlap.centre,
+                                                periodicity, boxSize, cutOff);
+                              }) ||
+        treeSmall.any_overlap(aabb,
+                              [&](unsigned id, const aabb2d &overlap) {
+                                // Cut-off distance.
+                                double cutOff = 2.0 * radiusSmall;
+                                cutOff *= cutOff;
 
-      // Generate the AABB.
-      abt::aabb<2> aabb(lowerBound, upperBound);
+                                // Particles overlap.
+                                return overlaps(position, overlap.centre,
+                                                periodicity, boxSize, cutOff);
+                              })
 
-      // First query AABB overlaps with the large particles.
-      std::vector<unsigned int> particles = treeLarge.get_overlaps(aabb);
-
-      // Flag as no overlap (yet).
-      isOverlap = false;
-
-      // Test overlap.
-      for (unsigned int j = 0; j < particles.size(); j++) {
-        // Cut-off distance.
-        double cutOff = radiusSmall + radiusLarge;
-        cutOff *= cutOff;
-
-        // Particles overlap.
-        if (overlaps(position, positionsLarge[particles[j]], periodicity,
-                     boxSize, cutOff)) {
-          isOverlap = true;
-          break;
-        }
-      }
-
-      // Advance to next overlap test.
-      if (!isOverlap) {
-        // No need to test the first particle.
-        if (i > 0) {
-          // Now query AABB overlaps with other small particles.
-          particles = treeSmall.get_overlaps(aabb);
-
-          // Test overlap.
-          for (unsigned int j = 0; j < particles.size(); j++) {
-            // Cut-off distance.
-            double cutOff = 2.0 * radiusSmall;
-            cutOff *= cutOff;
-
-            // Particles overlap.
-            if (overlaps(position, positionsSmall[particles[j]], periodicity,
-                         boxSize, cutOff)) {
-              isOverlap = true;
-              break;
-            }
-          }
-        }
-      }
-    }
-
+    );
     // Insert particle into tree.
-    treeSmall.insert(i, abt::aabb2d::of_sphere(position, radiusSmall));
-
-    // Store the position.
-    positionsSmall[i] = position;
+    treeSmall.insert(aabb);
   }
   std::cout << "Tree generated!\n";
 
@@ -287,6 +270,12 @@ int main(int argc, char **argv)
   unsigned int sampleFlag = 0;
   unsigned int nSampled = 0;
 
+  std::vector<unsigned> largeParticle_ids;
+  std::vector<unsigned> smallParticle_ids;
+
+  treeLarge.for_each([&](unsigned id, const auto &) { largeParticle_ids.push_back(id); });
+  treeSmall.for_each([&](unsigned id, const auto &) { smallParticle_ids.push_back(id); });
+
   std::cout << "\nRunning dynamics ...\n";
   for (unsigned int i = 0; i < nSweeps; i++) {
     for (unsigned int j = 0; j < nParticles; j++) {
@@ -299,98 +288,73 @@ int main(int argc, char **argv)
       // Determine the radius of the particle.
       double radius = (particleType == 0) ? radiusSmall : radiusLarge;
 
-      // Shift the particle index.
       if (particleType == 1)
         particle -= nSmall;
 
       // Initialise vectors.
       vec<double> displacement;
-      abt::point<2> position;
-      abt::point<2> lowerBound;
-      abt::point<2> upperBound;
+      point2d position;
 
-      // Calculate the new particle position and displacement.
+      // Calculate the new particle position and displacement
       if (particleType == 0) {
+        particle = smallParticle_ids[particle];
         displacement[0] = maxDisp * diameterSmall * (2.0 * rng() - 1.0);
         displacement[1] = maxDisp * diameterSmall * (2.0 * rng() - 1.0);
-        position[0] = positionsSmall[particle][0] + displacement[0];
-        position[1] = positionsSmall[particle][1] + displacement[1];
+        position = treeSmall.get_aabb(particle).centre + displacement;
       }
       else {
+        particle = largeParticle_ids[particle];
         displacement[0] = maxDisp * diameterLarge * (2.0 * rng() - 1.0);
         displacement[1] = maxDisp * diameterLarge * (2.0 * rng() - 1.0);
-        position[0] = positionsLarge[particle][0] + displacement[0];
-        position[1] = positionsLarge[particle][1] + displacement[1];
+        position = treeLarge.get_aabb(particle).centre + displacement;
       }
 
       // Apply periodic boundary conditions.
       periodicBoundaries(position, periodicity, boxSize);
 
-      // Compute lower and upper AABB bounds.
-      lowerBound[0] = position[0] - radius;
-      lowerBound[1] = position[1] - radius;
-      upperBound[0] = position[0] + radius;
-      upperBound[1] = position[1] + radius;
-
       // Generate the AABB.
-      abt::aabb<2> aabb(lowerBound, upperBound);
+      auto aabb = fattened(aabb2d::of_sphere(position, radius), maxDisp);
 
-      // Query AABB overlaps with small particles.
-      std::vector<unsigned int> particles = treeSmall.get_overlaps(aabb);
+      if (!treeLarge.any_overlap(aabb,
+                                [&](unsigned id, const aabb2d &overlap) {
+                                  // Cut-off distance.
+                                  double cutOff = radius + radiusLarge;
+                                  cutOff *= cutOff;
 
-      // Flag as not overlapping (yet).
-      bool isOverlap = false;
+                                  if (id == particle) {
+                                    // Self overlap, ignore.
+                                    return false;
+                                  }
 
-      // Test overlap.
-      for (unsigned int k = 0; k < particles.size(); k++) {
-        // Don't test self overlap.
-        if ((particleType == 1) || (particles[k] != particle)) {
-          // Cut-off distance.
-          double cutOff = radius + radiusSmall;
-          cutOff *= cutOff;
+                                  // Particles overlap.
+                                  return overlaps(position, overlap.centre,
+                                                  periodicity, boxSize, cutOff);
+                                }) &&
+          !treeSmall.any_overlap(aabb,
+                                [&](unsigned id, const aabb2d &overlap) {
+                                  // Cut-off distance.
+                                  double cutOff = radius + radiusSmall;
+                                  cutOff *= cutOff;
 
-          // Particles overlap.
-          if (overlaps(position, positionsSmall[particles[k]], periodicity,
-                       boxSize, cutOff)) {
-            isOverlap = true;
-            break;
-          }
-        }
-      }
+                                  if (id == particle) {
+                                    // Self overlap, ignore.
+                                    return false;
+                                  }
 
-      // Advance to next overlap test.
-      if (!isOverlap) {
-        // Now query AABB overlaps with large particles.
-        particles = treeLarge.get_overlaps(aabb);
+                                  // Particles overlap.
+                                  return overlaps(position, overlap.centre,
+                                                  periodicity, boxSize, cutOff);
+                                })
 
-        // Test overlap.
-        for (unsigned int k = 0; k < particles.size(); k++) {
-          // Don't test self overlap.
-          if ((particleType == 0) || (particles[k] != particle)) {
-            // Cut-off distance.
-            double cutOff = radius + radiusLarge;
-            cutOff *= cutOff;
-
-            // Particles overlap.
-            if (overlaps(position, positionsLarge[particles[k]], periodicity,
-                         boxSize, cutOff)) {
-              isOverlap = true;
-              break;
-            }
-          }
-        }
-
+      ) {
         // Accept the move.
-        if (!isOverlap) {
-          // Update the position and AABB tree.
-          if (particleType == 0) {
-            positionsSmall[particle] = position;
-            treeSmall.update(particle, {lowerBound, upperBound});
-          }
-          else {
-            positionsLarge[particle] = position;
-            treeLarge.update(particle, {lowerBound, upperBound});
-          }
+        if (particleType == 0) {
+          positionsSmall[particle] = position;
+          treeSmall.update(particle, aabb);
+        }
+        else {
+          positionsLarge[particle] = position;
+          treeLarge.update(particle, aabb);
         }
       }
     }
@@ -401,7 +365,17 @@ int main(int argc, char **argv)
       sampleFlag = 0;
       nSampled++;
 
-      printVMD("trajectory.xyz", positionsSmall, positionsLarge);
+      std::vector<point2d> smallVec;
+      for (unsigned x = 0; x < positionsSmall.size(); ++x) {
+        smallVec.push_back(positionsSmall[x]);
+      }
+
+      std::vector<point2d> largeVec;
+      for (unsigned x = 0; x < positionsLarge.size(); ++x) {
+        largeVec.push_back(positionsLarge[x]);
+      }
+
+      printVMD("trajectory.xyz", smallVec, largeVec);
 
       if (format == 1)
         printf("Saved configuration %2d of %2d\n", nSampled, nSamples);
@@ -416,83 +390,7 @@ int main(int argc, char **argv)
     }
   }
 
-  auto end = clk::now();
-  auto elapsed_s =
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-          .count() /
-      1000.;
-  std::cout << "Done! Time elapsed: " << elapsed_s << "s\n";
+  std::cout << "Done!\n";
 
   return (EXIT_SUCCESS);
-}
-
-// FUNCTION DEFINITIONS
-
-bool overlaps(abt::point<2> &position1,
-              abt::point<2> &position2,
-              const vec<bool> &periodicity,
-              const vec<double> &boxSize,
-              double cutOff)
-{
-  // Calculate particle separation.
-  vec<double> separation{(position1[0] - position2[0]),
-                         (position1[1] - position2[1])};
-
-  // Calculate minimum image separation.
-  minimumImage(separation, periodicity, boxSize);
-
-  double rSqd = separation[0] * separation[0] + separation[1] * separation[1];
-
-  if (rSqd < cutOff)
-    return true;
-  else
-    return false;
-}
-
-void minimumImage(vec<double> &separation,
-                  const vec<bool> &periodicity,
-                  const vec<double> &boxSize)
-{
-  for (unsigned int i = 0; i < 2; i++) {
-    if (separation[i] < -0.5 * boxSize[i]) {
-      separation[i] += periodicity[i] * boxSize[i];
-    }
-    else {
-      if (separation[i] >= 0.5 * boxSize[i]) {
-        separation[i] -= periodicity[i] * boxSize[i];
-      }
-    }
-  }
-}
-
-void periodicBoundaries(abt::point<2> &position,
-                        const vec<bool> &periodicity,
-                        const vec<double> &boxSize)
-{
-  for (unsigned int i = 0; i < 2; i++) {
-    if (position[i] < 0) {
-      position[i] += periodicity[i] * boxSize[i];
-    }
-    else {
-      if (position[i] >= boxSize[i]) {
-        position[i] -= periodicity[i] * boxSize[i];
-      }
-    }
-  }
-}
-
-void printVMD(const std::string &fileName,
-              const std::vector<abt::point<2>> &positionsSmall,
-              const std::vector<abt::point<2>> &positionsLarge)
-{
-  FILE *pFile;
-  pFile = fopen(fileName.c_str(), "a");
-
-  fprintf(pFile, "%lu\n\n", positionsSmall.size() + positionsLarge.size());
-  for (unsigned int i = 0; i < positionsSmall.size(); i++)
-    fprintf(pFile, "0 %lf %lf 0\n", positionsSmall[i][0], positionsSmall[i][1]);
-  for (unsigned int i = 0; i < positionsLarge.size(); i++)
-    fprintf(pFile, "1 %lf %lf 0\n", positionsLarge[i][0], positionsLarge[i][1]);
-
-  fclose(pFile);
 }
