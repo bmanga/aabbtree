@@ -153,22 +153,20 @@ int main(int argc, char **argv)
   // Output formatting flag.
   unsigned int format = std::floor(std::log10(nSamples));
 
-  // Set the periodicity of the simulation box.
-  vec<bool> periodicity({true, true});
-
   // Work out base length of simulation box.
   double baseLength =
       std::pow((M_PI * (nSmall * diameterSmall + nLarge * diameterLarge)) /
                    (4.0 * density),
                1.0 / 2.0);
   vec<double> boxSize({baseLength, baseLength});
+  vec<bool> periodicity{true, true};
 
   // Initialise the random number generator.
   MersenneTwister rng;
 
   // Initialise the AABB trees.
-  abt::tree<2, double> treeSmall(periodicity, boxSize, nSmall);
-  abt::tree<2, double> treeLarge(periodicity, boxSize, nLarge);
+  abt::tree<2, double> treeSmall(nSmall);
+  abt::tree<2, double> treeLarge(nLarge);
 
 
     // Initialise particle position vectors.
@@ -210,7 +208,7 @@ int main(int argc, char **argv)
 
           // Particles overlap.
           return overlaps(position, overlap.centre, periodicity, boxSize, cutOff);
-        }));
+        }, true, boxSize));
     }
 
     // Insert the particle into the tree.
@@ -240,7 +238,8 @@ int main(int argc, char **argv)
                                 // Particles overlap.
                                 return overlaps(position, overlap.centre,
                                                 periodicity, boxSize, cutOff);
-                              }) ||
+            },
+            true, boxSize) ||
         treeSmall.any_overlap(aabb,
                               [&](unsigned id, const aabb2d &overlap) {
                                 // Cut-off distance.
@@ -250,7 +249,8 @@ int main(int argc, char **argv)
                                 // Particles overlap.
                                 return overlaps(position, overlap.centre,
                                                 periodicity, boxSize, cutOff);
-                              })
+                 },
+                 true, boxSize)
 
     );
     // Insert particle into tree.
@@ -329,7 +329,8 @@ int main(int argc, char **argv)
                                   // Particles overlap.
                                   return overlaps(position, overlap.centre,
                                                   periodicity, boxSize, cutOff);
-                                }) &&
+              },
+              true, boxSize) &&
           !treeSmall.any_overlap(aabb,
                                 [&](unsigned id, const aabb2d &overlap) {
                                   // Cut-off distance.
@@ -344,7 +345,8 @@ int main(int argc, char **argv)
                                   // Particles overlap.
                                   return overlaps(position, overlap.centre,
                                                   periodicity, boxSize, cutOff);
-                                })
+              },
+              true, boxSize)
 
       ) {
         // Accept the move.
