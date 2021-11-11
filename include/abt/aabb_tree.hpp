@@ -358,6 +358,7 @@ enum visit_action : char { visit_stop, visit_continue };
  */
 template <unsigned Dim, typename ValTy = double>
 class tree {
+  static_assert(Dim > 0, "0-dimensional tree is not supported");
  public:
   using value_type = ValTy;
   using aabb = abt::aabb<Dim, value_type>;

@@ -52,7 +52,7 @@ TEST_CASE_TEMPLATE("aabb 2d", T, double, float, int, short)
   }
 }
 
-TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, short)
+TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, unsigned, short, unsigned short, int8_t, uint8_t)
 {
   using tree = tree<2, T>;
   using aabb = tree::aabb;
@@ -89,7 +89,7 @@ TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, short)
   REQUIRE(t.size() == 1);
 }
 
-TEST_CASE_TEMPLATE("periodic tree 2d", T, double, float, int, short) {
+TEST_CASE_TEMPLATE("periodic tree 2d", T, double, float, int, short, int8_t) {
   using tree = tree<2, T>;
   using aabb = tree::aabb;
   using point = tree::point;
