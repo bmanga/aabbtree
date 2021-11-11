@@ -41,9 +41,6 @@
 
 //#define vector moo
 
-/// Null node flag.
-const unsigned int NULL_NODE = 0xffffffff;
-
 namespace abt {
 template <unsigned Dim, typename ValTy = double>
 struct point {
@@ -394,6 +391,9 @@ class tree {
    function allows the tree to query whether the node is a leaf, i.e. to
    determine whether it holds a single entry.
   */
+
+  static constexpr unsigned int NULL_NODE = 0xffffffff;
+
   struct node {
     /// Constructor.
     node() = default;
