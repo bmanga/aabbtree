@@ -146,6 +146,10 @@ class aabb {
     centre = compute_center();
   }
 
+  bool operator==(const aabb& other) const {
+    return lowerBound == other.lowerBound && upperBound == other.upperBound;
+  }
+
   static aabb of_sphere(const point &center, value_type radius)
   {
     point lb, ub;
@@ -363,6 +367,8 @@ class tree {
   template <typename Ty>
   using vec = std::array<Ty, Dim>;
 
+  enum class node_id : uint32_t {};
+
  private:
   static vec<ValTy> minimum_image_shift(const vec<ValTy> &bounds,
                                  const vec<ValTy> &delta)
@@ -537,7 +543,7 @@ class tree {
       \param upperBound
           The upper bound in each dimension.
    */
-  unsigned insert(const aabb &bb)
+  node_id insert(const aabb &bb)
   {
     // Allocate a new node for the entry.
     unsigned int node_idx = allocate_node();
@@ -549,7 +555,7 @@ class tree {
 
     // Insert a new leaf into the tree.
     insert_leaf(node_idx);
-    return node_idx;
+    return to_id(node_idx);
   }
 
   /// Return the number of entrys in the tree.
@@ -559,11 +565,13 @@ class tree {
   /*! \param entry
           The entry index (entryMap will be used to map the node).
    */
-  void remove(unsigned int node)
-  {
-    assert(node < m_node_capacity);
-    assert(m_nodes[node].isLeaf());
 
+  static unsigned to_unsigned(node_id id) { return static_cast<unsigned>(id); }
+  static node_id to_id(unsigned node) { return static_cast<node_id>(node); }
+
+  void remove(node_id node_id)
+  {
+    auto node = to_unsigned(node_id);
     remove_leaf(node);
     free_node(node);
   }
@@ -571,7 +579,7 @@ class tree {
   /// Remove all entrys from the tree.
   void clear()
   {
-    for_each([this](unsigned id, const auto &) { remove(id); });
+    for_each([this](node_id id, const auto &) { remove(id); });
   }
 
   //! Update the tree if a entry moves outside its fattened AABB.
@@ -588,8 +596,9 @@ class tree {
           Always reinsert the entry, even if it's within its old AABB
      (default: false)
    */
-  bool update(unsigned int node, aabb bb, bool always_reinsert = false)
+  bool update(node_id id, aabb bb, bool always_reinsert = false)
   {
+    auto node = to_unsigned(id);
     auto &n = m_nodes[node];
 
     assert(node < m_node_capacity);
@@ -627,7 +636,7 @@ class tree {
                     const vec<ValTy> &bounds = {}) const
   {
     visit_overlaps(
-        query, [&](unsigned int id) { *out++ = id; }, include_touch, bounds);
+        query, [&](node_id id) { *out++ = id; }, include_touch, bounds);
   }
 
   //! Query the tree to find candidate interactions for an AABB.
@@ -638,13 +647,13 @@ class tree {
           A vector of entry indices.
    */
   template <class Query>
-  std::vector<unsigned int> get_overlaps(const Query &query,
+  std::vector<node_id> get_overlaps(const Query &query,
                                          bool include_touch = true,
                                          const vec<ValTy> &bounds = {}) const
   {
-    std::vector<unsigned int> overlaps;
+    std::vector<node_id> overlaps;
     visit_overlaps(
-        query, [&](unsigned int id) { overlaps.push_back(id); }, include_touch, bounds);
+        query, [&](node_id id) { overlaps.push_back(id); }, include_touch, bounds);
     return overlaps;
   }
 
@@ -654,7 +663,7 @@ class tree {
                    const vec<ValTy> &bounds = {}) const
   {
     return any_overlap(
-        query, [](unsigned) { return true; }, include_touch, bounds);
+        query, [] { return true; }, include_touch, bounds);
   }
 
   template <class Query, class Fn>
@@ -662,7 +671,7 @@ class tree {
                    const vec<ValTy> &bounds = {}) const
   {
     bool overlap = false;
-    auto wrap_fn = [&overlap, &fn](unsigned int id, const aabb &bb) {
+    auto wrap_fn = [&overlap, &fn](node_id id, const aabb &bb) {
       bool success = call_with_args(std::forward<Fn>(fn), id, bb);
       overlap |= success;
       return success ? visit_stop : visit_continue;
@@ -677,7 +686,7 @@ class tree {
     for (auto idx = 0ull; idx < m_nodes.size(); ++idx) {
       const auto &node = m_nodes[idx];
       if (node.isLeaf()) {
-        call_with_args(std::forward<Fn>(fn), idx, node.bb);
+        call_with_args(std::forward<Fn>(fn), to_id(idx), node.bb);
       }
     }
   }
@@ -705,7 +714,7 @@ class tree {
                   "Only point or aabb queries are supported");
 
 
-    using rt = decltype(call_with_args(std::forward<Fn>(fn), 0, aabb{}));
+    using rt = decltype(call_with_args(std::forward<Fn>(fn), to_id(0), aabb{}));
     constexpr bool fn_returns_action = std::is_convertible_v<rt, visit_action>;
     static_assert(fn_returns_action || std::is_same_v<rt, void>,
                   "Only void or visit_action return types are allowed");
@@ -751,12 +760,12 @@ class tree {
         if (m_nodes[node].isLeaf()) {
           const auto &n = m_nodes[node];
           if constexpr (fn_returns_action) {
-            if (call_with_args(std::forward<Fn>(fn), node, n.bb) == visit_stop) {
+            if (call_with_args(std::forward<Fn>(fn), to_id(node), n.bb) == visit_stop) {
               return;
             }
           }
           else {
-            call_with_args(std::forward<Fn>(fn), node, n.bb);
+            call_with_args(std::forward<Fn>(fn), to_id(node), n.bb);
           }
         }
         else {
@@ -771,7 +780,7 @@ class tree {
   /*! \param entry
           The entry index.
    */
-  const aabb &get_aabb(unsigned int node) const { return m_nodes[node].bb; }
+  const aabb &get_aabb(node_id node) const { return m_nodes[to_unsigned(node)].bb; }
 
   //! Get the height of the tree.
   /*! \return
@@ -890,10 +899,10 @@ class tree {
 
  private:
   template <class Fn>
-  static decltype(auto) call_with_args(Fn &&fn, unsigned id, const aabb &bb)
+  static decltype(auto) call_with_args(Fn &&fn, node_id id, const aabb &bb)
   {
-    constexpr bool call_id_bb = std::is_invocable_v<Fn, unsigned, aabb>;
-    constexpr bool call_id = std::is_invocable_v<Fn, unsigned>;
+    constexpr bool call_id_bb = std::is_invocable_v<Fn, node_id, aabb>;
+    constexpr bool call_id = std::is_invocable_v<Fn, node_id>;
     constexpr bool call_bb = std::is_invocable_v<Fn, aabb>;
     constexpr bool call_none = std::is_invocable_v<Fn>;
 

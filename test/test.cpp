@@ -21,6 +21,8 @@ TEST_CASE_TEMPLATE("aabb 2d", T, double, float, int, short)
   auto bb2d = aabb();
   REQUIRE(bb2d.lowerBound.x() == 0);
   REQUIRE(bb2d.upperBound.x() == 0);
+  REQUIRE(bb2d == aabb({0, 0}, {0, 0}));
+  REQUIRE(bb2d != aabb({1, 0}, {0, 0}));
 
   bb2d = aabb({0, 0}, {4, 4});
   REQUIRE(bb2d.lowerBound == point{0, 0});
@@ -79,9 +81,9 @@ TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, unsigned, short, unsigned s
   REQUIRE(intersections.size() == 1);
 
   REQUIRE(t.any_overlap(point{1, 1}, [] { return true; }));
-  REQUIRE(t.any_overlap(point{1, 1}, [] (unsigned) { return true; }));
+  REQUIRE(t.any_overlap(point{1, 1}, [] (tree::node_id) { return true; }));
   REQUIRE(t.any_overlap(point{1, 1}, [] (aabb) { return true; }));
-  REQUIRE(t.any_overlap(point{1, 1}, [](unsigned, aabb) { return true; }));
+  REQUIRE(t.any_overlap(point{1, 1}, [](tree::node_id, aabb) { return true; }));
 
   t.clear();
   REQUIRE(t.size() == 0);
@@ -97,10 +99,15 @@ TEST_CASE_TEMPLATE("periodic tree 2d", T, double, float, int, short, int8_t) {
   std::array<T, 2> bounds = {10, 10};
 
   tree t;
-  t.insert({{0, 0}, {2, 2}});
-  t.insert({{1, 1}, {3, 3}});
-  t.insert({{2, 2}, {4, 4}});
-  t.insert({{5, 5}, {7, 7}});
+  auto n1 = t.insert({{0, 0}, {2, 2}});
+  auto n2 = t.insert({{1, 1}, {3, 3}});
+  auto n3 = t.insert({{2, 2}, {4, 4}});
+  auto n4 = t.insert({{5, 5}, {7, 7}});
+
+  REQUIRE(t.get_aabb(n1) == aabb{{0, 0}, {2, 2}});
+  REQUIRE(t.get_aabb(n2) == aabb{{1, 1}, {3, 3}});
+  REQUIRE(t.get_aabb(n3) == aabb{{2, 2}, {4, 4}});
+  REQUIRE(t.get_aabb(n4) == aabb{{5, 5}, {7, 7}});
 
   auto intersections = t.get_overlaps(point{10, 1}, true, bounds);
   REQUIRE(intersections.size() == 1);
@@ -139,9 +146,9 @@ TEST_CASE_TEMPLATE("optimal tree 2d", T, double, float, int, short)
   REQUIRE(intersections.size() == 1);
 
   REQUIRE(t.any_overlap(point{1, 1}, [] { return true; }));
-  REQUIRE(t.any_overlap(point{1, 1}, [](unsigned) { return true; }));
+  REQUIRE(t.any_overlap(point{1, 1}, [](tree::node_id) { return true; }));
   REQUIRE(t.any_overlap(point{1, 1}, [](aabb) { return true; }));
-  REQUIRE(t.any_overlap(point{1, 1}, [](unsigned, aabb) { return true; }));
+  REQUIRE(t.any_overlap(point{1, 1}, [](tree::node_id, aabb) { return true; }));
 
   t.clear();
   REQUIRE(t.size() == 0);
