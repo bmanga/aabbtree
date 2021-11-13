@@ -7,11 +7,10 @@ TEST_CASE("point")
 {
   auto pt2d = point<2, double>{3, 5};
   auto pt2i = point<2, int>{3, 5};
-  auto pt3d = point<3, double>{3, 5};
-  auto pt3i = point<3, int>{3, 5};
-  // Ensure remaining points are zero-initialized.
-  REQUIRE(pt3d[2] == 0.0);
-  REQUIRE(pt3i[2] == 0);
+  auto pt3d = point<3, double>{3, 5, 7};
+  auto pt3i = point<3, int>{3, 5, 7};
+  REQUIRE(pt3d[2] == 7);
+  REQUIRE(pt3i[2] == 7);
 }
 
 TEST_CASE_TEMPLATE("aabb 2d", T, double, float, int, short)
@@ -19,28 +18,28 @@ TEST_CASE_TEMPLATE("aabb 2d", T, double, float, int, short)
   using aabb = aabb<2, T>;
   using point = aabb::point;
   auto bb2d = aabb();
-  REQUIRE(bb2d.lowerBound.x() == 0);
-  REQUIRE(bb2d.upperBound.x() == 0);
+  REQUIRE(bb2d.lowerBound[0] == 0);
+  REQUIRE(bb2d.upperBound[0] == 0);
   REQUIRE(bb2d == aabb({0, 0}, {0, 0}));
   REQUIRE(bb2d != aabb({1, 0}, {0, 0}));
 
   bb2d = aabb({0, 0}, {4, 4});
-  REQUIRE(bb2d.lowerBound == point{0, 0});
-  REQUIRE(bb2d.upperBound == point{4, 4});
+  REQUIRE(all_of(bb2d.lowerBound == point{0, 0}));
+  REQUIRE(all_of(bb2d.upperBound == point{4, 4}));
   // Not sure.
-  REQUIRE(bb2d.surfaceArea == 16);
-  REQUIRE(bb2d.centre == point{2, 2});
+  REQUIRE(bb2d.surfaceArea == 32);
+  REQUIRE(all_of(abt::compute_center(bb2d) == point{2, 2}));
 
   auto bb2d1 = aabb({2, 2}, {4, 4});
   auto bb2d2 = aabb({3, 3}, {5, 5});
   SUBCASE("merge")
   {
     bb2d.merge(bb2d1, bb2d2);
-    REQUIRE(bb2d.lowerBound == point{2, 2});
-    REQUIRE(bb2d.upperBound == point{5, 5});
+    REQUIRE(all_of(bb2d.lowerBound == point{2, 2}));
+    REQUIRE(all_of(bb2d.upperBound == point{5, 5}));
     // Not sure.
-    REQUIRE(bb2d.surfaceArea == 12);
-    REQUIRE(bb2d.centre == point{3.5, 3.5});
+    REQUIRE(bb2d.surfaceArea == 18);
+    REQUIRE(all_of(abt::compute_center(bb2d) == point{(T)3.5, (T)3.5}));
   }
   SUBCASE("contains")
   {
@@ -54,7 +53,49 @@ TEST_CASE_TEMPLATE("aabb 2d", T, double, float, int, short)
   }
 }
 
-TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, unsigned, short, unsigned short, int8_t, uint8_t)
+TEST_CASE_TEMPLATE("aabb 3d", T, double, float, int, short)
+{
+  using aabb = aabb<3, T>;
+  using point = aabb::point;
+  auto bb3d = aabb();
+  REQUIRE(bb3d.lowerBound[0] == 0);
+  REQUIRE(bb3d.upperBound[0] == 0);
+  REQUIRE(bb3d == aabb({0, 0, 0}, {0, 0, 0}));
+  REQUIRE(bb3d != aabb({1, 0, 0}, {0, 0, 0}));
+
+  bb3d = aabb({0, 0, 0}, {4, 4, 4});
+  REQUIRE(all_of(bb3d.lowerBound == point{0, 0, 0}));
+  REQUIRE(all_of(bb3d.upperBound == point{4, 4, 4}));
+  // Not sure.
+  REQUIRE(bb3d.surfaceArea == 48);
+  REQUIRE(all_of(abt::compute_center(bb3d) == point{2, 2, 2}));
+
+  /*
+  auto bb2d1 = aabb({2, 2}, {4, 4});
+  auto bb2d2 = aabb({3, 3}, {5, 5});
+  SUBCASE("merge")
+  {
+    bb2d.merge(bb2d1, bb2d2);
+    REQUIRE(all_of(bb2d.lowerBound == point{2, 2}));
+    REQUIRE(all_of(bb2d.upperBound == point{5, 5}));
+    // Not sure.
+    REQUIRE(bb2d.surfaceArea == 9);
+    REQUIRE(all_of(abt::compute_center(bb2d) == point{(T)3.5, (T)3.5}));
+  }
+  SUBCASE("contains")
+  {
+    REQUIRE(bb2d.contains(bb2d1));
+    REQUIRE(!bb2d.contains(bb2d2));
+  }
+  SUBCASE("overlaps")
+  {
+    REQUIRE(bb2d.overlaps(bb2d1, true));
+    REQUIRE(bb2d.overlaps(bb2d2, true));
+  }
+  */
+}
+
+TEST_CASE_TEMPLATE("tree 2d", T, double, float, int32_t, uint32_t, int16_t, uint16_t)
 {
   using tree = tree<2, T>;
   using aabb = tree::aabb;
@@ -91,12 +132,18 @@ TEST_CASE_TEMPLATE("tree 2d", T, double, float, int, unsigned, short, unsigned s
   REQUIRE(t.size() == 1);
 }
 
-TEST_CASE_TEMPLATE("periodic tree 2d", T, double, float, int, short, int8_t) {
+TEST_CASE_TEMPLATE("periodic tree 2d",
+                   T,
+                   double,
+                   float,
+                   int32_t,
+                   int16_t)
+{
   using tree = tree<2, T>;
   using aabb = tree::aabb;
   using point = tree::point;
 
-  std::array<T, 2> bounds = {10, 10};
+  Vc::fixed_size_simd<T, 2> bounds = {{10, 10}};
 
   tree t;
   auto n1 = t.insert({{0, 0}, {2, 2}});

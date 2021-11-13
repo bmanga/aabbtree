@@ -22,15 +22,30 @@
 
 #include <fstream>
 #include <iostream>
+#include <chrono>
+
+using clk = std::chrono::high_resolution_clock;
+
+
+
+auto ms = [](auto duration) {
+  return std::chrono::duration_cast<std::chrono::microseconds>(duration)
+      .count();
+};
 
 #include "abt/aabb_tree.hpp"
 #include "MersenneTwister.h"
+
+using tree_t = abt::tree<2, double>;
+using value_type = tree_t::value_type;
+using aabb = tree_t::aabb;
+using point = tree_t::point;
+using node_id = tree_t::node_id;
 
 #ifndef M_PI
 #define M_PI 3.1415926535897932384626433832795
 #endif
 
-using namespace abt;
 template <class T>
 using vec = abt::tree2d::vec<T>;
 
@@ -42,9 +57,9 @@ using vec = abt::tree2d::vec<T>;
 */
 
 // FUNCTION DEFINITIONS
-void minimumImage(vec<double> &separation,
+void minimumImage(vec<value_type> &separation,
                   const vec<bool> &periodicity,
-                  const vec<double> &boxSize)
+                  const vec<value_type> &boxSize)
 {
   for (unsigned int i = 0; i < 2; i++) {
     if (separation[i] < -0.5 * boxSize[i]) {
@@ -58,14 +73,14 @@ void minimumImage(vec<double> &separation,
   }
 }
 
-bool overlaps(const point2d &position1,
-              const point2d &position2,
+bool overlaps(const point &position1,
+              const point &position2,
               const vec<bool> &periodicity,
-              const vec<double> &boxSize,
+              const vec<value_type> &boxSize,
               double cutOff)
 {
   // Calculate particle separation.
-  vec<double> separation;
+  vec<value_type> separation;
   separation[0] = (position1[0] - position2[0]);
   separation[1] = (position1[1] - position2[1]);
 
@@ -80,9 +95,9 @@ bool overlaps(const point2d &position1,
     return false;
 }
 
-void periodicBoundaries(point2d &position,
+void periodicBoundaries(point &position,
                         const vec<bool> &periodicity,
-                        const vec<double> &boxSize)
+                        const vec<value_type> &boxSize)
 {
   for (unsigned int i = 0; i < 2; i++) {
     if (position[i] < 0) {
@@ -97,8 +112,8 @@ void periodicBoundaries(point2d &position,
 }
 
 void printVMD(const std::string &fileName,
-              const std::vector<point2d> &positionsSmall,
-              const std::vector<point2d> &positionsLarge)
+              const std::vector<point> &positionsSmall,
+              const std::vector<point> &positionsLarge)
 {
   FILE *pFile;
   pFile = fopen(fileName.c_str(), "a");
@@ -159,19 +174,21 @@ int main(int argc, char **argv)
                    (4.0 * density),
                1.0 / 2.0);
   vec<double> boxSize({baseLength, baseLength});
-  vec<bool> periodicity{true, true};
+  vec<double> period = {};
+  //boxSize;
+  vec<bool> periodicity{false, false};
 
   // Initialise the random number generator.
   MersenneTwister rng;
 
   // Initialise the AABB trees.
-  abt::tree<2, double> treeSmall(nSmall);
-  abt::tree<2, double> treeLarge(nLarge);
+  tree_t treeSmall(nSmall);
+  tree_t treeLarge(nLarge);
 
 
     // Initialise particle position vectors.
-  std::unordered_map<unsigned, point2d> positionsSmall(nSmall);
-  std::unordered_map<unsigned, point2d> positionsLarge(nLarge);
+  std::unordered_map<unsigned, point> positionsSmall(nSmall);
+  std::unordered_map<unsigned, point> positionsLarge(nLarge);
   /*****************************************************************/
   /*             Generate the initial AABB trees.                  */
   /*****************************************************************/
@@ -181,15 +198,15 @@ int main(int argc, char **argv)
   std::cout << "\nInserting large particles into AABB tree ...\n";
   for (unsigned int i = 0; i < nLarge; i++) {
     // Initialise the particle position vector.
-    point2d position;
-    aabb2d aabb;
+    point position;
+    aabb bb;
 
     // Insert the first particle directly.
     if (i == 0) {
       // Generate a random particle position.
       position[0] = boxSize[0] * rng();
       position[1] = boxSize[1] * rng();
-      aabb = fattened(aabb2d::of_sphere(position, radiusLarge), maxDisp);
+      bb = aabb::of_sphere(position, radiusLarge);
     }
 
     // Check for overlaps.
@@ -199,20 +216,20 @@ int main(int argc, char **argv)
         position[0] = boxSize[0] * rng();
         position[1] = boxSize[1] * rng();
 
-        aabb = fattened(abt::aabb2d::of_sphere(position, radiusLarge), maxDisp);
+        bb = aabb::of_sphere(position, radiusLarge);
       } while (treeLarge.any_overlap(
-        aabb, [&](unsigned id, const aabb2d& overlap) {
+        bb, [&](const aabb& overlap) {
           // Cut-off distance.
           double cutOff = 2.0 * radiusLarge;
           cutOff *= cutOff;
 
           // Particles overlap.
-          return overlaps(position, overlap.centre, periodicity, boxSize, cutOff);
-        }, true, boxSize));
+          return overlaps(position, compute_center(overlap), periodicity, boxSize, cutOff);
+        }, true, period));
     }
 
     // Insert the particle into the tree.
-    treeLarge.insert(aabb);
+    treeLarge.insert(fattened(bb, maxDisp));
   }
   std::cout << "Tree generated!\n";
 
@@ -221,40 +238,40 @@ int main(int argc, char **argv)
   std::cout << "\nInserting small particles into AABB tree ...\n";
   for (unsigned int i = 0; i < nSmall; i++) {
     // Initialise the particle position vector.
-    point2d position;
-    aabb2d aabb;
+    point position;
+    aabb bb;
 
     do {
       position[0] = boxSize[0] * rng();
       position[1] = boxSize[1] * rng();
-      aabb = fattened(aabb2d::of_sphere(position, radiusSmall), maxDisp);
+      bb = aabb::of_sphere(position, radiusSmall);
     } while (
-        treeLarge.any_overlap(aabb,
-                              [&](unsigned id, const aabb2d &overlap) {
+        treeLarge.any_overlap(bb,
+                              [&](const aabb &overlap) {
                                 // Cut-off distance.
                                 double cutOff = radiusSmall + radiusLarge;
                                 cutOff *= cutOff;
 
                                 // Particles overlap.
-                                return overlaps(position, overlap.centre,
+                                return overlaps(position, compute_center(overlap),
                                                 periodicity, boxSize, cutOff);
             },
-            true, boxSize) ||
-        treeSmall.any_overlap(aabb,
-                              [&](unsigned id, const aabb2d &overlap) {
+            true, period) ||
+        treeSmall.any_overlap(bb,
+                              [&](const aabb &overlap) {
                                 // Cut-off distance.
                                 double cutOff = 2.0 * radiusSmall;
                                 cutOff *= cutOff;
 
                                 // Particles overlap.
-                                return overlaps(position, overlap.centre,
+                                return overlaps(position, compute_center(overlap),
                                                 periodicity, boxSize, cutOff);
                  },
-                 true, boxSize)
+                 true, period)
 
     );
     // Insert particle into tree.
-    treeSmall.insert(aabb);
+    treeSmall.insert(fattened(bb, maxDisp));
   }
   std::cout << "Tree generated!\n";
 
@@ -270,14 +287,16 @@ int main(int argc, char **argv)
   unsigned int sampleFlag = 0;
   unsigned int nSampled = 0;
 
-  std::vector<unsigned> largeParticle_ids;
-  std::vector<unsigned> smallParticle_ids;
 
-  treeLarge.for_each([&](unsigned id, const auto &) { largeParticle_ids.push_back(id); });
-  treeSmall.for_each([&](unsigned id, const auto &) { smallParticle_ids.push_back(id); });
+  std::vector<node_id> largeParticle_ids;
+  std::vector<node_id> smallParticle_ids;
+
+  treeLarge.for_each([&](node_id id) { largeParticle_ids.push_back(id); });
+  treeSmall.for_each([&](node_id id) { smallParticle_ids.push_back(id); });
 
   std::cout << "\nRunning dynamics ...\n";
   for (unsigned int i = 0; i < nSweeps; i++) {
+    auto start = clk::now();
     for (unsigned int j = 0; j < nParticles; j++) {
       // Choose a random particle.
       unsigned int particle = rng.integer(0, nParticles - 1);
@@ -292,71 +311,73 @@ int main(int argc, char **argv)
         particle -= nSmall;
 
       // Initialise vectors.
-      vec<double> displacement;
-      point2d position;
+      vec<value_type> displacement;
+      point position;
+
+      node_id particle_id;
 
       // Calculate the new particle position and displacement
       if (particleType == 0) {
-        particle = smallParticle_ids[particle];
+        particle_id = smallParticle_ids[particle];
         displacement[0] = maxDisp * diameterSmall * (2.0 * rng() - 1.0);
         displacement[1] = maxDisp * diameterSmall * (2.0 * rng() - 1.0);
-        position = treeSmall.get_aabb(particle).centre + displacement;
+        position = compute_center(treeSmall.get_aabb(particle_id)) + displacement;
       }
       else {
-        particle = largeParticle_ids[particle];
+        particle_id = largeParticle_ids[particle];
         displacement[0] = maxDisp * diameterLarge * (2.0 * rng() - 1.0);
         displacement[1] = maxDisp * diameterLarge * (2.0 * rng() - 1.0);
-        position = treeLarge.get_aabb(particle).centre + displacement;
+        position = compute_center(treeLarge.get_aabb(particle_id)) + displacement;
       }
 
       // Apply periodic boundary conditions.
       periodicBoundaries(position, periodicity, boxSize);
 
       // Generate the AABB.
-      auto aabb = fattened(aabb2d::of_sphere(position, radius), maxDisp);
+      auto bb = aabb::of_sphere(position, radius);
 
-      if (!treeLarge.any_overlap(aabb,
-                                [&](unsigned id, const aabb2d &overlap) {
+      if (!treeLarge.any_overlap(bb,
+                                [&](node_id id, const aabb &overlap) {
                                   // Cut-off distance.
                                   double cutOff = radius + radiusLarge;
                                   cutOff *= cutOff;
 
-                                  if (id == particle) {
+                                  if (id == particle_id) {
                                     // Self overlap, ignore.
                                     return false;
                                   }
 
                                   // Particles overlap.
-                                  return overlaps(position, overlap.centre,
+                                  return overlaps(position, compute_center(overlap),
                                                   periodicity, boxSize, cutOff);
               },
-              true, boxSize) &&
-          !treeSmall.any_overlap(aabb,
-                                [&](unsigned id, const aabb2d &overlap) {
+              true, period) &&
+          !treeSmall.any_overlap(bb,
+                                [&](node_id id, const aabb &overlap) {
                                   // Cut-off distance.
                                   double cutOff = radius + radiusSmall;
                                   cutOff *= cutOff;
 
-                                  if (id == particle) {
+                                  if (id == particle_id) {
                                     // Self overlap, ignore.
                                     return false;
                                   }
 
                                   // Particles overlap.
-                                  return overlaps(position, overlap.centre,
+                                  return overlaps(position, compute_center(overlap),
                                                   periodicity, boxSize, cutOff);
               },
-              true, boxSize)
+              true, period)
 
       ) {
         // Accept the move.
         if (particleType == 0) {
           positionsSmall[particle] = position;
-          treeSmall.update(particle, aabb);
+          treeSmall.update(particle_id, bb);
         }
         else {
           positionsLarge[particle] = position;
-          treeLarge.update(particle, aabb);
+          treeLarge.update(particle_id, bb);
         }
       }
     }
@@ -364,31 +385,36 @@ int main(int argc, char **argv)
     sampleFlag++;
 
     if (sampleFlag == sampleInterval) {
+      auto end = clk::now();
       sampleFlag = 0;
       nSampled++;
 
-      std::vector<point2d> smallVec;
+      std::vector<point> smallVec;
       for (unsigned x = 0; x < positionsSmall.size(); ++x) {
         smallVec.push_back(positionsSmall[x]);
       }
 
-      std::vector<point2d> largeVec;
+      std::vector<point> largeVec;
       for (unsigned x = 0; x < positionsLarge.size(); ++x) {
         largeVec.push_back(positionsLarge[x]);
       }
 
-      printVMD("trajectory.xyz", smallVec, largeVec);
+      //printVMD("trajectory.xyz", smallVec, largeVec);
 
       if (format == 1)
-        printf("Saved configuration %2d of %2d\n", nSampled, nSamples);
+        printf("Saved configuration %2d of %2d (%lu ms)\n", nSampled, nSamples, ms(end - start));
       else if (format == 2)
-        printf("Saved configuration %3d of %3d\n", nSampled, nSamples);
+        printf("Saved configuration %3d of %3d (%lu ms)\n", nSampled, nSamples,
+               ms(end - start));
       else if (format == 3)
-        printf("Saved configuration %4d of %4d\n", nSampled, nSamples);
+        printf("Saved configuration %4d of %4d (%lu ms)\n", nSampled, nSamples,
+               ms(end - start));
       else if (format == 4)
-        printf("Saved configuration %5d of %5d\n", nSampled, nSamples);
+        printf("Saved configuration %5d of %5d (%lu ms)\n", nSampled, nSamples,
+               ms(end - start));
       else if (format == 5)
-        printf("Saved configuration %6d of %6d\n", nSampled, nSamples);
+        printf("Saved configuration %6d of %6d (%lu ms)\n", nSampled, nSamples,
+               ms(end - start));
     }
   }
 

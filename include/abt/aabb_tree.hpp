@@ -38,82 +38,22 @@
 #include <unordered_map>
 #include <span>
 #include <numeric>
+#include <functional>
 
+#include <xmmintrin.h>
+#include <smmintrin.h>
+#include <immintrin.h>
+
+#include <Vc/Vc>
 //#define vector moo
 
 namespace abt {
-template <unsigned Dim, typename ValTy = double>
-struct point {
-  using value_type = ValTy;
+template <int Dim, typename ValTy = double>
+using point = Vc::fixed_size_simd<ValTy, Dim>;
 
-  template <typename... Values>
-  point(Values... values) : values{value_type(values)...}
-  {
-  }
-
-  point() = default;
-
-  point(const point &other) : values(other.values){}
-  point(point &&other) : values(std::move(other).values) {}
-
-  point& operator=(const point& other) {
-    values = other.values;
-    return *this;
-  }
-  point& operator=(point&& other) {
-    values = std::move(other).values;
-    return *this;
-  }
-
-  bool operator==(const point &other) const { return values == other.values; }
-
-  const value_type &x() const { return values[0]; }
-  const value_type &y() const { return values[1]; }
-  const value_type &z() const { return values[2]; }
-
-  value_type &x() { return values[0]; }
-  value_type &y() { return values[1]; }
-  value_type &z() { return values[2]; }
-
-  friend point<Dim, ValTy> operator+(const point<Dim, ValTy> &a,
-                                     const std::array<ValTy, Dim> &b)
-  {
-    point<Dim, ValTy> res;
-    for (auto d = 0; d < Dim; ++d) {
-      res[d] = a[d] + b[d];
-    }
-    return res;
-  }
-
-  friend point<Dim, ValTy> operator-(const point<Dim, ValTy> &a,
-                                     const std::array<ValTy, Dim> &b)
-  {
-    point<Dim, ValTy> res;
-    for (auto d = 0; d < Dim; ++d) {
-      res[d] = a[d] - b[d];
-    }
-    return res;
-  }
-
-  point &operator+=(const std::array<ValTy, Dim> &rhs)
-  {
-    *this = *this + rhs;
-    return *this;
-  }
-
-  point& operator-=(const std::array<ValTy, Dim>& rhs) {
-    *this = *this - rhs;
-    return *this;
-  }
-
-  constexpr size_t size() const { return Dim; }
-
-  value_type &operator[](size_t idx) { return values[idx]; }
-  const value_type &operator[](size_t idx) const { return values[idx]; }
-
-  std::array<value_type, Dim> values = {};
-};
-/*! \brief The axis-aligned bounding box object.
+template <int Dim, typename ValTy = double>
+using vec = Vc::fixed_size_simd<ValTy, Dim>;
+    /*! \brief The axis-aligned bounding box object.
 
     Axis-aligned bounding boxes (AABBs) store information for the minimum
     orthorhombic bounding-box for an object. Support is provided for
@@ -123,7 +63,7 @@ struct point {
     Class member functions provide functionality for merging AABB objects
     and testing overlap with other AABBs.
  */
-template <unsigned Dim, typename ValTy = double>
+template <int Dim, typename ValTy = double>
 class aabb {
  public:
   using point = abt::point<Dim, ValTy>;
@@ -142,70 +82,15 @@ class aabb {
   aabb(const point &lower_bound, const point &upper_bound)
       : lowerBound(lower_bound), upperBound(upper_bound)
   {
-    surfaceArea = compute_surface_area();
-    centre = compute_center();
   }
 
   bool operator==(const aabb& other) const {
-    return lowerBound == other.lowerBound && upperBound == other.upperBound;
+    return all_of(lowerBound == other.lowerBound) && all_of(upperBound == other.upperBound);
   }
 
   static aabb of_sphere(const point &center, value_type radius)
   {
-    point lb, ub;
-    for (unsigned int i = 0; i < Dim; i++) {
-      lb[i] = center[i] - radius;
-      ub[i] = center[i] + radius;
-    }
-    return {lb, ub};
-  }
-
-  /// Compute the surface area of the box.
-  value_type compute_surface_area() const
-  {
-    // Sum of "area" of all the sides.
-    value_type sum = 0;
-
-    // General formula for one side: hold one dimension constant
-    // and multiply by all the other ones.
-    for (unsigned int d1 = 0; d1 < Dim; d1++) {
-      // "Area" of current side.
-      value_type product = 1;
-
-      for (unsigned int d2 = 0; d2 < Dim; d2++) {
-        if (d1 == d2)
-          continue;
-
-        value_type dx = upperBound[d2] - lowerBound[d2];
-        product *= dx;
-      }
-
-      // Update the sum.
-      sum += product;
-    }
-
-    return 2 * sum;
-  }
-
-  /// Get the surface area of the box.
-  value_type get_surface_area() const { return surfaceArea; }
-
-  //! Merge two AABBs into this one.
-  /*! \param aabb1
-          A reference to the first AABB.
-
-      \param aabb2
-          A reference to the second AABB.
-   */
-  void merge(const aabb &aabb1, const aabb &aabb2)
-  {
-    for (unsigned int i = 0; i < Dim; i++) {
-      lowerBound[i] = std::min(aabb1.lowerBound[i], aabb2.lowerBound[i]);
-      upperBound[i] = std::max(aabb1.upperBound[i], aabb2.upperBound[i]);
-    }
-
-    surfaceArea = compute_surface_area();
-    centre = compute_center();
+    return {center - radius, center + radius};
   }
 
   //! Test whether the AABB is contained within this one.
@@ -217,14 +102,8 @@ class aabb {
    */
   bool contains(const aabb &aabb) const
   {
-    for (unsigned int i = 0; i < Dim; i++) {
-      if (aabb.lowerBound[i] < lowerBound[i])
-        return false;
-      if (aabb.upperBound[i] > upperBound[i])
-        return false;
-    }
-
-    return true;
+    return all_of(aabb.lowerBound < lowerBound) &&
+           all_of(aabb.upperBound > upperBound);
   }
 
   //! Test whether the AABB overlaps this one.
@@ -237,26 +116,16 @@ class aabb {
       \return
           Whether the AABB overlaps.
    */
-  bool overlaps(const aabb &aabb, bool touchIsOverlap) const
+  bool overlaps(aabb b, bool touchIsOverlap) const
   {
     if (touchIsOverlap) {
-      for (unsigned int i = 0; i < Dim; ++i) {
-        if (aabb.upperBound[i] < lowerBound[i] ||
-            aabb.lowerBound[i] > upperBound[i]) {
-          return false;
-        }
-      }
+      return none_of(b.upperBound < lowerBound) &&
+             none_of(b.lowerBound > upperBound);
     }
     else {
-      for (unsigned int i = 0; i < Dim; ++i) {
-        if (aabb.upperBound[i] <= lowerBound[i] ||
-            aabb.lowerBound[i] >= upperBound[i]) {
-          return false;
-        }
-      }
+      return none_of(b.upperBound <= lowerBound) &&
+             none_of(b.lowerBound >= upperBound);
     }
-
-    return true;
   }
 
   //! Test whether the point overlaps this one.
@@ -293,15 +162,6 @@ class aabb {
   /*! \returns
           The position vector of the AABB centre.
    */
-  point compute_center()
-  {
-    point center;
-
-    for (unsigned int i = 0; i < Dim; i++)
-      center[i] = 0.5 * (lowerBound[i] + upperBound[i]);
-
-    return center;
-  }
 
   /// Lower bound of AABB in each dimension.
   point lowerBound;
@@ -309,13 +169,8 @@ class aabb {
   /// Upper bound of AABB in each dimension.
   point upperBound;
 
-  /// The position of the AABB centre.
-  point centre;
 
-  /// The AABB's surface area.
-  value_type surfaceArea = 0;
-
-  friend aabb<Dim, ValTy> operator-(const aabb<Dim, ValTy>& lhs, const std::array<ValTy, Dim>& rhs) {
+  friend aabb<Dim, ValTy> operator-(const aabb<Dim, ValTy>& lhs, const abt::vec<Dim, ValTy>& rhs) {
     auto res = lhs;
     res.lowerBound -= rhs;
     res.upperBound -= rhs;
@@ -323,7 +178,7 @@ class aabb {
   }
 
   friend aabb<Dim, ValTy> operator+(const aabb<Dim, ValTy> &lhs,
-                                    const std::array<ValTy, Dim> &rhs)
+                                    const abt::vec<Dim, ValTy> &rhs)
   {
     auto res = lhs;
     res.lowerBound += rhs;
@@ -332,7 +187,35 @@ class aabb {
   }
 };
 
-template <unsigned Dim, typename ValTy = double>
+template <int Dim, class ValTy>
+point<Dim, ValTy> compute_center(const aabb<Dim, ValTy> &bb)
+{
+  point<Dim, ValTy> center;
+
+  for (unsigned int i = 0; i < Dim; i++)
+    center[i] = 0.5 * (bb.lowerBound[i] + bb.upperBound[i]);
+
+  return center;
+}
+
+template <int Dim, class ValTy>
+point<Dim, ValTy> compute_center(const point<Dim, ValTy> &point)
+{
+  return point;
+}
+
+/// Compute the surface area of the box.
+template <int Dim, class ValTy>
+auto compute_surface_area_vec(aabb<Dim, ValTy> bb)
+{
+  auto dx = bb.upperBound - bb.lowerBound;
+  auto dx2 = dx.rotated(1);
+
+  return dx * dx2;
+}
+
+
+template <int Dim, typename ValTy = double>
 aabb<Dim, ValTy> fattened(aabb<Dim, ValTy> bb, double skin_thickness)
 {
   // Fatten the AABB.
@@ -341,9 +224,21 @@ aabb<Dim, ValTy> fattened(aabb<Dim, ValTy> bb, double skin_thickness)
     bb.lowerBound[i] -= skin_thickness * sz;
     bb.upperBound[i] += skin_thickness * sz;
   }
-  bb.surfaceArea = bb.compute_surface_area();
-  bb.centre = bb.compute_center();
   return bb;
+}
+
+  //! Merge two AABBs into this one.
+/*! \param aabb1
+        A reference to the first AABB.
+
+    \param aabb2
+        A reference to the second AABB.
+ */
+template <int Dim, typename ValTy = double>
+aabb<Dim, ValTy> merge(aabb<Dim, ValTy> aabb1, aabb<Dim, ValTy> aabb2)
+{
+  return {min(aabb1.lowerBound, aabb2.lowerBound),
+          max(aabb1.upperBound, aabb2.upperBound)};
 }
 
 
@@ -365,9 +260,14 @@ class tree {
   using aabb = abt::aabb<Dim, value_type>;
   using point = abt::point<Dim, value_type>;
   template <typename Ty>
-  using vec = std::array<Ty, Dim>;
+  using vec = abt::vec<Dim, ValTy>;
 
   enum class node_id : uint32_t {};
+
+  friend bool operator==(node_id id1, node_id id2)
+  {
+    return to_unsigned(id1) == to_unsigned(id2);
+  }
 
  private:
   static vec<ValTy> minimum_image_shift(const vec<ValTy> &bounds,
@@ -647,9 +547,9 @@ class tree {
           A vector of entry indices.
    */
   template <class Query>
-  std::vector<node_id> get_overlaps(const Query &query,
-                                         bool include_touch = true,
-                                         const vec<ValTy> &bounds = {}) const
+  std::vector<node_id> get_overlaps(Query query,
+                                    bool include_touch = true,
+                                    const vec<ValTy> &bounds = {}) const
   {
     std::vector<node_id> overlaps;
     visit_overlaps(
@@ -658,7 +558,7 @@ class tree {
   }
 
   template <class Query>
-  bool any_overlap(const Query &query,
+  bool any_overlap(Query query,
                    bool include_touch = true,
                    const vec<ValTy> &bounds = {}) const
   {
@@ -667,7 +567,7 @@ class tree {
   }
 
   template <class Query, class Fn>
-  bool any_overlap(const Query &query, Fn &&fn, bool include_touch = true,
+  bool any_overlap(Query query, Fn &&fn, bool include_touch = true,
                    const vec<ValTy> &bounds = {}) const
   {
     bool overlap = false;
@@ -702,7 +602,7 @@ class tree {
   }
 
   template <class Query, class Fn>
-  void visit_overlaps(const Query &query,
+  void visit_overlaps(Query query,
                       Fn &&fn,
                       bool include_touch,
                       const vec<ValTy> &bounds, 
@@ -724,6 +624,8 @@ class tree {
       return;
     }
 
+    bool is_periodic = any_of(bounds || bounds);
+
     stack.clear();
 
     stack.push_back(m_root);
@@ -735,27 +637,20 @@ class tree {
       // Copy the AABB.
       const auto &nodeAABB = m_nodes[node].bb;
 
-      auto shifted_query = query;
       if (node == NULL_NODE)
         continue;
 
-      vec<ValTy> separation = {};
-      point center;
-      if constexpr (query_is_point) {
-        center = query;
+      if (is_periodic) {
+        vec<ValTy> separation = {};
+        point center_query = compute_center(query);
+        //point center_bb = compute_center(nodeAABB);
+        vec<ValTy> shift = Vc::fixed_size_simd<int, Dim>(center_query / bounds) * bounds;
+        query = query - shift;
+        //minimum_image_shift(bounds, separation);
       }
-      else {
-        center = query.centre;
-      }
-      for (unsigned int i = 0; i < Dim; i++) {
-        separation[i] = nodeAABB.centre[i] - center[i];
-      }
-
-      shifted_query = shifted_query + minimum_image_shift(bounds, separation);
-      
 
       // Test for overlap between the AABBs.
-      if (nodeAABB.overlaps(shifted_query, include_touch)) {
+      if (nodeAABB.overlaps(query, include_touch)) {
         // Check that we're at a leaf node.
         if (m_nodes[node].isLeaf()) {
           const auto &n = m_nodes[node];
@@ -997,11 +892,10 @@ class tree {
       unsigned int left = m_nodes[index].left;
       unsigned int right = m_nodes[index].right;
 
-      double surfaceArea = m_nodes[index].bb.get_surface_area();
+      double surfaceArea = compute_surface_area(m_nodes[index].bb);
 
-      aabb combinedAABB;
-      combinedAABB.merge(m_nodes[index].bb, leafAABB);
-      double combinedSurfaceArea = combinedAABB.get_surface_area();
+      aabb combinedAABB = merge(m_nodes[index].bb, leafAABB);
+      double combinedSurfaceArea = compute_surface_area(combinedAABB);
 
       // Cost of creating a new parent for this node and the new leaf.
       double cost = 2.0 * combinedSurfaceArea;
@@ -1012,30 +906,26 @@ class tree {
       // Cost of descending to the left.
       double costLeft;
       if (m_nodes[left].isLeaf()) {
-        aabb aabb;
-        aabb.merge(leafAABB, m_nodes[left].bb);
-        costLeft = aabb.get_surface_area() + inheritanceCost;
+        aabb aabb = merge(leafAABB, m_nodes[left].bb);
+        costLeft = compute_surface_area(aabb) + inheritanceCost;
       }
       else {
-        aabb aabb;
-        aabb.merge(leafAABB, m_nodes[left].bb);
-        double oldArea = m_nodes[left].bb.get_surface_area();
-        double newArea = aabb.get_surface_area();
+        aabb aabb = merge(leafAABB, m_nodes[left].bb);
+        double oldArea = compute_surface_area(m_nodes[left].bb);
+        double newArea = compute_surface_area(aabb);
         costLeft = (newArea - oldArea) + inheritanceCost;
       }
 
       // Cost of descending to the right.
       double costRight;
       if (m_nodes[right].isLeaf()) {
-        aabb aabb;
-        aabb.merge(leafAABB, m_nodes[right].bb);
-        costRight = aabb.get_surface_area() + inheritanceCost;
+        aabb aabb = merge(leafAABB, m_nodes[right].bb);
+        costRight = compute_surface_area(aabb) + inheritanceCost;
       }
       else {
-        aabb aabb;
-        aabb.merge(leafAABB, m_nodes[right].bb);
-        double oldArea = m_nodes[right].bb.get_surface_area();
-        double newArea = aabb.get_surface_area();
+        aabb aabb = merge(leafAABB, m_nodes[right].bb);
+        double oldArea = compute_surface_area(m_nodes[right].bb);
+        double newArea = compute_surface_area(aabb);
         costRight = (newArea - oldArea) + inheritanceCost;
       }
 
@@ -1056,7 +946,7 @@ class tree {
     unsigned int oldParent = m_nodes[sibling].parent;
     unsigned int newParent = allocate_node();
     m_nodes[newParent].parent = oldParent;
-    m_nodes[newParent].bb.merge(leafAABB, m_nodes[sibling].bb);
+    m_nodes[newParent].bb = merge(leafAABB, m_nodes[sibling].bb);
     m_nodes[newParent].height = m_nodes[sibling].height + 1;
 
     // The sibling was not the root.
@@ -1093,7 +983,7 @@ class tree {
 
       m_nodes[index].height =
           1 + std::max(m_nodes[left].height, m_nodes[right].height);
-      m_nodes[index].bb.merge(m_nodes[left].bb, m_nodes[right].bb);
+      m_nodes[index].bb = merge(m_nodes[left].bb, m_nodes[right].bb);
 
       index = m_nodes[index].parent;
     }
@@ -1138,7 +1028,7 @@ class tree {
         unsigned int left = m_nodes[index].left;
         unsigned int right = m_nodes[index].right;
 
-        m_nodes[index].bb.merge(m_nodes[left].bb, m_nodes[right].bb);
+        m_nodes[index].bb = merge(m_nodes[left].bb, m_nodes[right].bb);
         m_nodes[index].height =
             1 + std::max(m_nodes[left].height, m_nodes[right].height);
 
@@ -1201,8 +1091,8 @@ class tree {
         m_nodes[right].right = rightLeft;
         m_nodes[node].right = rightRight;
         m_nodes[rightRight].parent = node;
-        m_nodes[node].bb.merge(m_nodes[left].bb, m_nodes[rightRight].bb);
-        m_nodes[right].bb.merge(m_nodes[node].bb, m_nodes[rightLeft].bb);
+        m_nodes[node].bb = merge(m_nodes[left].bb, m_nodes[rightRight].bb);
+        m_nodes[right].bb = merge(m_nodes[node].bb, m_nodes[rightLeft].bb);
 
         m_nodes[node].height =
             1 + std::max(m_nodes[left].height, m_nodes[rightRight].height);
@@ -1213,8 +1103,8 @@ class tree {
         m_nodes[right].right = rightRight;
         m_nodes[node].right = rightLeft;
         m_nodes[rightLeft].parent = node;
-        m_nodes[node].bb.merge(m_nodes[left].bb, m_nodes[rightLeft].bb);
-        m_nodes[right].bb.merge(m_nodes[node].bb, m_nodes[rightRight].bb);
+        m_nodes[node].bb = merge(m_nodes[left].bb, m_nodes[rightLeft].bb);
+        m_nodes[right].bb = merge(m_nodes[node].bb, m_nodes[rightRight].bb);
 
         m_nodes[node].height =
             1 + std::max(m_nodes[left].height, m_nodes[rightLeft].height);
@@ -1255,8 +1145,8 @@ class tree {
         m_nodes[left].right = leftLeft;
         m_nodes[node].left = leftRight;
         m_nodes[leftRight].parent = node;
-        m_nodes[node].bb.merge(m_nodes[right].bb, m_nodes[leftRight].bb);
-        m_nodes[left].bb.merge(m_nodes[node].bb, m_nodes[leftLeft].bb);
+        m_nodes[node].bb = merge(m_nodes[right].bb, m_nodes[leftRight].bb);
+        m_nodes[left].bb = merge(m_nodes[node].bb, m_nodes[leftLeft].bb);
 
         m_nodes[node].height =
             1 + std::max(m_nodes[right].height, m_nodes[leftRight].height);
@@ -1267,8 +1157,8 @@ class tree {
         m_nodes[left].right = leftRight;
         m_nodes[node].left = leftLeft;
         m_nodes[leftLeft].parent = node;
-        m_nodes[node].bb.merge(m_nodes[right].bb, m_nodes[leftLeft].bb);
-        m_nodes[left].bb.merge(m_nodes[node].bb, m_nodes[leftRight].bb);
+        m_nodes[node].bb = merge(m_nodes[right].bb, m_nodes[leftLeft].bb);
+        m_nodes[left].bb = merge(m_nodes[node].bb, m_nodes[leftRight].bb);
 
         m_nodes[node].height =
             1 + std::max(m_nodes[right].height, m_nodes[leftLeft].height);
